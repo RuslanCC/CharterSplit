@@ -24,6 +24,11 @@ export class TripsController {
     return this.trips.getBalances(id, user);
   }
 
+  @Get(':id/summary')
+  summary(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.trips.getSummary(id, user);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,

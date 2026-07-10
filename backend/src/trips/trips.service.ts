@@ -62,6 +62,13 @@ export class TripsService {
     return { trip, ...balances };
   }
 
+  /** Итоги поездки группового чата (для команды /summary). */
+  async summaryForGroupChat(chatId: number, chatTitle?: string) {
+    const trip = await this.ensureForGroupChat(chatId, chatTitle);
+    const summary = await this.balances.summary(trip.id);
+    return { trip, summary };
+  }
+
   /**
    * Регистрирует автора сообщения в группе как участника поездки (вызывается
    * ботом). Если участник добавлялся заглушкой по @username — привязывает её.
@@ -343,5 +350,10 @@ export class TripsService {
   async getBalances(id: string, user: User) {
     await this.access.assertMember(id, user);
     return this.balances.compute(id);
+  }
+
+  async getSummary(id: string, user: User) {
+    await this.access.assertMember(id, user);
+    return this.balances.summary(id);
   }
 }

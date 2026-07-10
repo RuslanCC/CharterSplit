@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Download } from 'lucide-react';
 import { useTrip } from '../providers';
 import { api, ApiError } from '@/lib/api';
 import type { SplitType, TripSettings } from '@/lib/types';
@@ -28,6 +28,23 @@ export default function SettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [exporting, setExporting] = React.useState(false);
+  const [exportMsg, setExportMsg] = React.useState<string | null>(null);
+
+  async function exportCsv() {
+    setExportMsg(null);
+    setExporting(true);
+    try {
+      await api.post(`/trips/${trip.id}/export/send-to-chat`);
+      setExportMsg('Файл отправлен в чат поездки');
+    } catch (e) {
+      setExportMsg(
+        e instanceof ApiError ? e.message : (e as Error).message,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function save() {
     setError(null);
@@ -123,7 +140,14 @@ export default function SettingsPage() {
               <ChevronRight size={18} className="text-hint" />
             </CardRow>
           </Link>
+          <button onClick={exportCsv} disabled={exporting} className="w-full">
+            <CardRow>
+              <span>{exporting ? 'Отправка…' : 'Экспорт расходов (CSV в чат)'}</span>
+              <Download size={18} className="text-hint" />
+            </CardRow>
+          </button>
         </Card>
+        {exportMsg && <div className="mt-2 text-sm text-hint">{exportMsg}</div>}
 
         {error && <div className="mt-3 text-sm text-destructive">{error}</div>}
         {msg && <div className="mt-3 text-sm text-positive">{msg}</div>}

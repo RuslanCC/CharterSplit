@@ -104,6 +104,18 @@ export interface Balances {
   totalSpent: number;
 }
 
+export interface TripSummary {
+  totalSpent: number;
+  spentFromFund: number;
+  spentPersonal: number;
+  expenseCount: number;
+  firstExpenseAt: string | null;
+  lastExpenseAt: string | null;
+  days: number;
+  avgPerDay: number;
+  perMember: { memberId: string; displayName: string; paid: number }[];
+}
+
 export interface FundTransaction {
   id: string;
   memberId: string | null;

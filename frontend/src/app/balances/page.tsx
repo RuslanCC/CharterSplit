@@ -6,7 +6,7 @@ import { useTrip } from '../providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { formatMoney, formatDate, parseMoney } from '@/lib/format';
-import type { Balances, Transfer } from '@/lib/types';
+import type { Balances, Transfer, TripSummary } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Label } from '@/components/ui/input';
@@ -16,6 +16,10 @@ export default function BalancesPage() {
   const { trip, userId } = useTrip();
   const { data, loading, error, reload } = useAsync<Balances>(
     () => api.get(`/trips/${trip.id}/balances`),
+    [trip.id],
+  );
+  const summary = useAsync<TripSummary>(
+    () => api.get(`/trips/${trip.id}/summary`),
     [trip.id],
   );
 
@@ -145,26 +149,30 @@ export default function BalancesPage() {
               <EmptyState>Все рассчитались 🎉</EmptyState>
             )}
             {data.transfers.map((t, i) => (
-              <CardRow key={i}>
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium">{t.fromName}</span>
-                  <ArrowRight size={16} className="shrink-0 text-hint" />
-                  <span className="truncate font-medium">{t.toName}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-semibold text-link">
+              <CardRow key={i} className="gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[15px]">
+                    <span className="truncate font-medium text-destructive">
+                      {t.fromName}
+                    </span>
+                    <ArrowRight size={15} className="shrink-0 text-hint" />
+                    <span className="truncate font-medium text-positive">
+                      {t.toName}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 font-semibold">
                     {formatMoney(t.amount, trip.currency)}
-                  </span>
-                  <button
-                    onClick={() => settleTransfer(t)}
-                    disabled={busy}
-                    title="Отметить оплаченным"
-                    className="flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-positive active:opacity-60 disabled:opacity-50"
-                  >
-                    <Check size={14} />
-                    Оплачено
-                  </button>
+                  </div>
                 </div>
+                <button
+                  onClick={() => settleTransfer(t)}
+                  disabled={busy}
+                  aria-label="Отметить оплаченным"
+                  title="Отметить оплаченным"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-positive active:opacity-60 disabled:opacity-50"
+                >
+                  <Check size={18} />
+                </button>
               </CardRow>
             ))}
           </Card>
@@ -320,6 +328,38 @@ export default function BalancesPage() {
               );
             })}
           </Card>
+
+          {summary.data && summary.data.expenseCount > 0 && (
+            <>
+              <SectionTitle>Итоги поездки</SectionTitle>
+              <Card>
+                <CardRow>
+                  <span className="text-hint">Всего потрачено</span>
+                  <span className="font-semibold">
+                    {formatMoney(summary.data.totalSpent, trip.currency)}
+                  </span>
+                </CardRow>
+                <CardRow>
+                  <span className="text-hint">Лично</span>
+                  <span>{formatMoney(summary.data.spentPersonal, trip.currency)}</span>
+                </CardRow>
+                <CardRow>
+                  <span className="text-hint">Из кассы</span>
+                  <span>{formatMoney(summary.data.spentFromFund, trip.currency)}</span>
+                </CardRow>
+                <CardRow>
+                  <span className="text-hint">Расходов</span>
+                  <span>
+                    {summary.data.expenseCount} за {summary.data.days} дн.
+                  </span>
+                </CardRow>
+                <CardRow>
+                  <span className="text-hint">В среднем в день</span>
+                  <span>{formatMoney(summary.data.avgPerDay, trip.currency)}</span>
+                </CardRow>
+              </Card>
+            </>
+          )}
         </div>
       )}
     </div>

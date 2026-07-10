@@ -128,4 +128,72 @@ export class BalancesService {
       totalSpent,
     };
   }
+
+  /** Итоги поездки: суммы, число расходов, длительность, разбивка по плательщикам. */
+  async summary(tripId: string) {
+    const [members, expenses] = await Promise.all([
+      this.prisma.tripMember.findMany({ where: { tripId } }),
+      this.prisma.expense.findMany({
+        where: { tripId },
+        select: {
+          amount: true,
+          fromFund: true,
+          spentAt: true,
+          paidByMemberId: true,
+        },
+      }),
+    ]);
+
+    const nameById = new Map(members.map((m) => [m.id, m.displayName]));
+
+    let spentFromFund = 0;
+    let spentPersonal = 0;
+    const paidByMember: Record<string, number> = {};
+    let firstAt: Date | null = null;
+    let lastAt: Date | null = null;
+
+    for (const e of expenses) {
+      if (e.fromFund) {
+        spentFromFund += e.amount;
+      } else {
+        spentPersonal += e.amount;
+        paidByMember[e.paidByMemberId] =
+          (paidByMember[e.paidByMemberId] ?? 0) + e.amount;
+      }
+      if (!firstAt || e.spentAt < firstAt) firstAt = e.spentAt;
+      if (!lastAt || e.spentAt > lastAt) lastAt = e.spentAt;
+    }
+
+    const totalSpent = spentFromFund + spentPersonal;
+
+    // Календарный размах в днях (включительно), минимум 1 — без деления на ноль.
+    let days = 1;
+    if (firstAt && lastAt) {
+      const startOfDay = (d: Date) =>
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      days = Math.floor((startOfDay(lastAt) - startOfDay(firstAt)) / 86_400_000) + 1;
+      if (days < 1) days = 1;
+    }
+
+    const perMember = Object.entries(paidByMember)
+      .map(([memberId, paid]) => ({
+        memberId,
+        displayName: nameById.get(memberId) ?? '?',
+        paid,
+      }))
+      .filter((m) => m.paid > 0)
+      .sort((a, b) => b.paid - a.paid);
+
+    return {
+      totalSpent,
+      spentFromFund,
+      spentPersonal,
+      expenseCount: expenses.length,
+      firstExpenseAt: firstAt ? firstAt.toISOString() : null,
+      lastExpenseAt: lastAt ? lastAt.toISOString() : null,
+      days,
+      avgPerDay: Math.round(totalSpent / days),
+      perMember,
+    };
+  }
 }

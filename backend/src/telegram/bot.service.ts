@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, InlineKeyboard } from 'grammy';
+import { Bot, InlineKeyboard, InputFile } from 'grammy';
 import { TripsService } from '../trips/trips.service';
+import { ExportService } from '../export/export.service';
 import { formatMoney } from '../common/format';
 
 /**
@@ -17,6 +18,7 @@ export class BotService implements OnModuleInit {
   constructor(
     private readonly config: ConfigService,
     private readonly trips: TripsService,
+    private readonly exporter: ExportService,
   ) {}
 
   private get token(): string {
@@ -55,6 +57,8 @@ export class BotService implements OnModuleInit {
       await this.bot.api.setMyCommands([
         { command: 'start', description: 'Открыть CharterSplit' },
         { command: 'balance', description: 'Баланс поездки и взаиморасчёты' },
+        { command: 'summary', description: 'Итоги поездки' },
+        { command: 'export', description: 'Выгрузить расходы в CSV' },
       ]);
     } catch (e) {
       this.logger.warn(`setMyCommands failed: ${(e as Error).message}`);
@@ -118,6 +122,37 @@ export class BotService implements OnModuleInit {
       await ctx.reply(
         'Команда /balance работает в групповом чате поездки. ' +
           'Здесь откройте приложение, чтобы посмотреть балансы.',
+        keyboard ? { reply_markup: keyboard } : undefined,
+      );
+    });
+
+    bot.command('summary', async (ctx) => {
+      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
+        await this.sendSummaryMessage(ctx.chat.id, ctx.chat.title);
+        return;
+      }
+      const keyboard = appUrl
+        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
+        : undefined;
+      await ctx.reply(
+        'Команда /summary работает в групповом чате поездки. ' +
+          'Здесь откройте приложение, чтобы посмотреть итоги.',
+        keyboard ? { reply_markup: keyboard } : undefined,
+      );
+    });
+
+    bot.command('export', async (ctx) => {
+      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
+        await this.sendExportDocument(ctx.chat.id, ctx.chat.title);
+        return;
+      }
+      const keyboard = appUrl
+        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
+        : undefined;
+      await ctx.reply(
+        'Команда /export работает в групповом чате поездки — файл придёт сюда же.',
         keyboard ? { reply_markup: keyboard } : undefined,
       );
     });
@@ -271,6 +306,95 @@ export class BotService implements OnModuleInit {
     } catch (e) {
       this.logger.error(
         `balance message failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /** Отправляет в группу итоги поездки: суммы, число расходов, дни, топ плательщиков. */
+  private async sendSummaryMessage(
+    chatId: number,
+    chatTitle?: string,
+  ): Promise<void> {
+    try {
+      const { trip, summary } = await this.trips.summaryForGroupChat(
+        chatId,
+        chatTitle,
+      );
+      const fmt = (minor: number) => formatMoney(minor, trip.currency);
+
+      const lines: string[] = [
+        `📊 Итоги «${trip.title}»`,
+        '',
+        `💰 Всего потрачено: ${fmt(summary.totalSpent)}`,
+        `👤 Лично: ${fmt(summary.spentPersonal)}`,
+        `🏦 Из кассы: ${fmt(summary.spentFromFund)}`,
+        `🧾 Расходов: ${summary.expenseCount} за ${summary.days} дн.`,
+        `📈 В среднем: ${fmt(summary.avgPerDay)} в день`,
+      ];
+
+      if (summary.perMember.length > 0) {
+        lines.push('', 'Кто сколько платил:');
+        for (const m of summary.perMember) {
+          lines.push(`• ${m.displayName}: ${fmt(m.paid)}`);
+        }
+      }
+
+      await this.bot!.api.sendMessage(chatId, lines.join('\n'), {
+        reply_markup: new InlineKeyboard().url(
+          '🧾 Открыть CharterSplit',
+          this.miniAppLink(chatId),
+        ),
+      });
+    } catch (e) {
+      this.logger.error(
+        `summary message failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /** Находит/создаёт поездку группы и присылает CSV-выгрузку расходов в чат. */
+  private async sendExportDocument(
+    chatId: number,
+    chatTitle?: string,
+  ): Promise<void> {
+    try {
+      const trip = await this.trips.ensureForGroupChat(chatId, chatTitle);
+      const { filename, content } = await this.exporter.buildCsv(trip.id);
+      await this.sendDocumentToChat(
+        BigInt(chatId),
+        filename,
+        content,
+        `📄 Расходы поездки «${trip.title}»`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `export document failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Отправляет файл-документ в чат. Никогда не бросает.
+   */
+  async sendDocumentToChat(
+    telegramChatId: bigint,
+    filename: string,
+    content: string,
+    caption?: string,
+  ): Promise<void> {
+    if (!this.bot || !this.ready) {
+      this.logger.warn('sendDocumentToChat skipped: bot is not ready');
+      return;
+    }
+    try {
+      await this.bot.api.sendDocument(
+        Number(telegramChatId),
+        new InputFile(Buffer.from(content, 'utf8'), filename),
+        caption ? { caption } : undefined,
+      );
+    } catch (e) {
+      this.logger.error(
+        `sendDocumentToChat failed for chat ${telegramChatId}: ${(e as Error).message}`,
       );
     }
   }

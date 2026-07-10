@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Settings, Users, ChevronRight, Plus } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '@/lib/categories';
-import { CategoryBadge } from '@/components/category-badge';
+import { SpendingChart } from '@/components/spending-chart';
 import { useTrip } from './providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
@@ -98,8 +98,17 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <SectionTitle>Участники</SectionTitle>
+      <SectionTitle>Динамика трат</SectionTitle>
       <div className="px-4">
+        {expenses.loading && <Loading />}
+        {expenses.error && <ErrorState message={expenses.error} />}
+        {expenses.data && (
+          <SpendingChart expenses={expenses.data} currency={trip.currency} />
+        )}
+      </div>
+
+      <SectionTitle>Участники</SectionTitle>
+      <div className="px-4 pb-4">
         <Card>
           <Link href="/members">
             <CardRow>
@@ -110,38 +119,6 @@ export default function OverviewPage() {
               <ChevronRight size={18} className="text-hint" />
             </CardRow>
           </Link>
-        </Card>
-      </div>
-
-      <SectionTitle>Последние расходы</SectionTitle>
-      <div className="px-4 pb-4">
-        <Card>
-          {expenses.loading && <Loading />}
-          {expenses.error && <ErrorState message={expenses.error} />}
-          {expenses.data && expenses.data.length === 0 && (
-            <CardRow>
-              <span className="text-hint">Пока нет расходов</span>
-            </CardRow>
-          )}
-          {expenses.data?.slice(0, 5).map((e) => (
-            <Link key={e.id} href={`/expenses`}>
-              <CardRow>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{e.description}</span>
-                    {e.category && <CategoryBadge category={e.category} />}
-                  </div>
-                  <div className="text-xs text-hint">
-                    {e.paidByMember?.displayName ?? ''}
-                    {e.fromFund ? ' · из кассы' : ''}
-                  </div>
-                </div>
-                <div className="font-semibold">
-                  {formatMoney(e.amount, trip.currency)}
-                </div>
-              </CardRow>
-            </Link>
-          ))}
         </Card>
       </div>
     </div>
