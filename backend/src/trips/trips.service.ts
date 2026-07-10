@@ -62,6 +62,14 @@ export class TripsService {
     return { trip, ...balances };
   }
 
+  /** Сохраняет id закреплённого «табло баланса» (null — сбросить). */
+  async setPinnedMessageId(tripId: string, messageId: number | null): Promise<void> {
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { pinnedMessageId: messageId === null ? null : BigInt(messageId) },
+    });
+  }
+
   /** Итоги поездки группового чата (для команды /summary). */
   async summaryForGroupChat(chatId: number, chatTitle?: string) {
     const trip = await this.ensureForGroupChat(chatId, chatTitle);

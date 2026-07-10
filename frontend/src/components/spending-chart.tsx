@@ -1,15 +1,42 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { categoryColor, OTHER_CATEGORY_COLOR } from '@/lib/categories';
 import { formatMoney } from '@/lib/format';
 import type { Expense } from '@/lib/types';
 
 // Накопительный график всех трат во времени: каждый расход поднимает линию
-// на свою сумму; сегмент окрашен в цвет категории. Под графиком — итог.
+// на свою сумму; сегмент окрашен в цвет категории. Вертикальные пунктиры —
+// границы дней; при наведении на расход показывается тултип с деталями.
 const W = 320;
 const H = 150;
 const PAD = 8;
+
+const dayKey = (iso: string) => iso.slice(0, 10);
+
+const fmtDay = (iso: string) => {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: 'short',
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 10);
+  }
+};
+
+const fmtDateTime = (iso: string) => {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+};
 
 export function SpendingChart({
   expenses,
@@ -18,6 +45,8 @@ export function SpendingChart({
   expenses: Expense[];
   currency: string;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
+
   const model = useMemo(() => {
     const sorted = [...expenses].sort((a, b) =>
       a.spentAt.localeCompare(b.spentAt),
@@ -32,6 +61,14 @@ export function SpendingChart({
 
     let cum = 0;
     const segments: { d: string; color: string }[] = [];
+    const nodes: {
+      x0: number;
+      x1: number;
+      x: number;
+      y: number;
+      cum: number;
+      e: Expense;
+    }[] = [];
     const points: { x: number; y: number }[] = [{ x: x(0), y: y(0) }];
     sorted.forEach((e, i) => {
       const from = cum;
@@ -43,12 +80,32 @@ export function SpendingChart({
         color: e.fromFund ? OTHER_CATEGORY_COLOR : categoryColor(e.category),
       });
       points.push(p2);
+      nodes.push({ x0: x(i), x1: x(i + 1), x: p2.x, y: p2.y, cum, e });
     });
 
     // Заливка области под кривой.
     const areaPath =
       points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') +
       ` L ${x(n)} ${H - PAD} L ${x(0)} ${H - PAD} Z`;
+
+    // Границы дней: вертикаль там, где начинается новый день. Подписи прореживаем,
+    // чтобы не наезжали друг на друга при плотном графике.
+    const days: { x: number; pct: number; label: string; line: boolean; showLabel: boolean }[] = [];
+    let lastLabel = -Infinity;
+    sorted.forEach((e, i) => {
+      if (i === 0 || dayKey(e.spentAt) !== dayKey(sorted[i - 1].spentAt)) {
+        const xi = x(i);
+        const showLabel = xi - lastLabel > 44;
+        if (showLabel) lastLabel = xi;
+        days.push({
+          x: xi,
+          pct: (xi / W) * 100,
+          label: fmtDay(e.spentAt),
+          line: i !== 0,
+          showLabel,
+        });
+      }
+    });
 
     // Итоги по категориям для легенды.
     const byCat = new Map<string, number>();
@@ -67,7 +124,15 @@ export function SpendingChart({
             : categoryColor(label === 'Другое' ? null : label),
       }));
 
-    return { total, segments, areaPath, legend, last: points[points.length - 1] };
+    return {
+      total,
+      segments,
+      areaPath,
+      legend,
+      nodes,
+      days,
+      last: points[points.length - 1],
+    };
   }, [expenses]);
 
   if (expenses.length === 0) {
@@ -78,33 +143,139 @@ export function SpendingChart({
     );
   }
 
+  const active = hover != null ? model.nodes[hover] : null;
+  const tipLeft = active ? (active.x / W) * 100 : 0;
+  const tipTop = active ? (active.y / H) * 100 : 0;
+  const tipTx = tipLeft < 18 ? '0%' : tipLeft > 82 ? '-100%' : '-50%';
+
   return (
     <div className="rounded-xl bg-card p-4">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: 'auto' }}
-        preserveAspectRatio="none"
-      >
-        <path d={model.areaPath} fill="var(--color-link)" fillOpacity={0.06} />
-        {model.segments.map((s, i) => (
-          <path
-            key={i}
-            d={s.d}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-        <circle
-          cx={model.last.x}
-          cy={model.last.y}
-          r={3.5}
-          fill="var(--color-text)"
-        />
-      </svg>
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full touch-none"
+          style={{ height: 'auto' }}
+          preserveAspectRatio="none"
+          onPointerLeave={() => setHover(null)}
+        >
+          <path d={model.areaPath} fill="var(--color-link)" fillOpacity={0.06} />
+
+          {/* Вертикальные границы дней */}
+          {model.days.map(
+            (d, i) =>
+              d.line && (
+                <line
+                  key={`day-${i}`}
+                  x1={d.x}
+                  y1={PAD}
+                  x2={d.x}
+                  y2={H - PAD}
+                  stroke="var(--color-hint)"
+                  strokeWidth={1}
+                  strokeOpacity={0.25}
+                  strokeDasharray="3 3"
+                />
+              ),
+          )}
+
+          {model.segments.map((s, i) => (
+            <path
+              key={i}
+              d={s.d}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+
+          {/* Подсветка выбранной точки */}
+          {active && (
+            <>
+              <line
+                x1={active.x}
+                y1={PAD}
+                x2={active.x}
+                y2={H - PAD}
+                stroke="var(--color-text)"
+                strokeWidth={1}
+                strokeOpacity={0.25}
+              />
+              <circle
+                cx={active.x}
+                cy={active.y}
+                r={4.5}
+                fill="var(--color-text)"
+              />
+            </>
+          )}
+
+          {!active && (
+            <circle
+              cx={model.last.x}
+              cy={model.last.y}
+              r={3.5}
+              fill="var(--color-text)"
+            />
+          )}
+
+          {/* Прозрачные колонки-мишени для наведения/тапа */}
+          {model.nodes.map((node, i) => (
+            <rect
+              key={`hit-${i}`}
+              x={node.x0}
+              y={0}
+              width={Math.max(0.01, node.x1 - node.x0)}
+              height={H}
+              fill="transparent"
+              onPointerEnter={() => setHover(i)}
+              onPointerDown={() => setHover(i)}
+            />
+          ))}
+        </svg>
+
+        {/* Подписи дней */}
+        {model.days.map(
+          (d, i) =>
+            d.showLabel && (
+              <span
+                key={`lbl-${i}`}
+                className="pointer-events-none absolute bottom-0 whitespace-nowrap text-[10px] text-hint"
+                style={{ left: `calc(${d.pct}% + 3px)` }}
+              >
+                {d.label}
+              </span>
+            ),
+        )}
+
+        {/* Тултип расхода */}
+        {active && (
+          <div
+            className="pointer-events-none absolute z-10"
+            style={{
+              left: `${tipLeft}%`,
+              top: `${tipTop}%`,
+              transform: `translate(${tipTx}, calc(-100% - 8px))`,
+            }}
+          >
+            <div className="rounded-lg bg-text px-2.5 py-1.5 text-xs text-bg shadow-lg">
+              <div className="font-semibold">
+                {active.e.fromFund
+                  ? `${active.e.description} · из кассы`
+                  : active.e.description}
+              </div>
+              <div className="font-medium">
+                {formatMoney(active.e.amount, currency)}
+              </div>
+              <div className="opacity-60">
+                {fmtDateTime(active.e.spentAt)} · Σ{' '}
+                {formatMoney(active.cum, currency)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="mt-3 flex items-baseline justify-between">
         <span className="text-xs text-hint">Всего потрачено</span>

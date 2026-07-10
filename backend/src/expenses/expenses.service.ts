@@ -96,6 +96,7 @@ export class ExpensesService {
       splitType: expense.splitType,
       participantCount: expense.shares.length,
     });
+    void this.notify.balanceChanged(tripId);
 
     return expense;
   }
@@ -128,7 +129,7 @@ export class ExpensesService {
 
     const shares = fromFund ? [] : this.buildShares(splitType, amount, participants);
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.expenseShare.deleteMany({ where: { expenseId } });
       const expense = await tx.expense.update({
         where: { id: expenseId },
@@ -167,6 +168,10 @@ export class ExpensesService {
       );
       return expense;
     });
+
+    void this.notify.balanceChanged(tripId);
+
+    return updated;
   }
 
   async remove(tripId: string, expenseId: string, user: User) {
@@ -196,6 +201,7 @@ export class ExpensesService {
       description: existing.description,
       amount: existing.amount,
     });
+    void this.notify.balanceChanged(tripId);
 
     return result;
   }

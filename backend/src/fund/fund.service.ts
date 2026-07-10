@@ -140,6 +140,7 @@ export class FundService {
     } else if (type === FundTxnType.PAYOUT) {
       void this.notify.fundPaidOut(tripId, user, memberName, amount);
     }
+    void this.notify.balanceChanged(tripId);
 
     return result;
   }

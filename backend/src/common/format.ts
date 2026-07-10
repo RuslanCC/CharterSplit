@@ -19,3 +19,11 @@ export function displayNameOf(user: User): string {
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
   return name || user.username || `user_${user.telegramUserId}`;
 }
+
+/** Экранирует спецсимволы для parse_mode: 'HTML' в сообщениях Telegram. */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}

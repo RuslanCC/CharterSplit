@@ -35,6 +35,9 @@ model Trip {
   startParam     String?  @unique
   title          String
   currency       String   @default("RUB")
+  // id закреплённого «табло баланса» в чате: бот редактирует это сообщение
+  // на месте при каждом изменении. null → табло ещё не создано (команда /board).
+  pinnedMessageId BigInt?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

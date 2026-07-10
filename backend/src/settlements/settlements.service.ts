@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
+import { NotifyService } from '../telegram/notify.service';
 import { CreateSettlementDto } from './dto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class SettlementsService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly history: HistoryService,
+    private readonly notify: NotifyService,
   ) {}
 
   async list(tripId: string, user: User) {
@@ -36,8 +38,8 @@ export class SettlementsService {
       this.access.assertMemberInTrip(tripId, dto.fromMemberId),
       this.access.assertMemberInTrip(tripId, dto.toMemberId),
     ]);
-    return this.prisma.$transaction(async (tx) => {
-      const settlement = await tx.settlement.create({
+    const settlement = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.settlement.create({
         data: {
           tripId,
           fromMemberId: dto.fromMemberId,
@@ -52,7 +54,7 @@ export class SettlementsService {
           actorUserId: user.id,
           action: HistoryAction.SETTLEMENT_RECORDED,
           entityType: 'Settlement',
-          entityId: settlement.id,
+          entityId: created.id,
           payload: {
             fromName: from.displayName,
             toName: to.displayName,
@@ -61,8 +63,12 @@ export class SettlementsService {
         },
         tx,
       );
-      return settlement;
+      return created;
     });
+
+    void this.notify.balanceChanged(tripId);
+
+    return settlement;
   }
 
   async remove(tripId: string, settlementId: string, user: User) {
@@ -72,7 +78,7 @@ export class SettlementsService {
       include: { fromMember: true, toMember: true },
     });
     if (!settlement) throw new NotFoundException('settlement not found');
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.settlement.delete({ where: { id: settlement.id } });
       await this.history.record(
         {
@@ -91,5 +97,9 @@ export class SettlementsService {
       );
       return { deleted: true };
     });
+
+    void this.notify.balanceChanged(tripId);
+
+    return result;
   }
 }

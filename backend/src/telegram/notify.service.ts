@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { SplitType, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BotService } from './bot.service';
-import { displayNameOf, formatMoney } from '../common/format';
+import { displayNameOf, formatMoney, escapeHtml } from '../common/format';
 
 const SPLIT_NOTE: Record<SplitType, string> = {
   EQUAL: 'поровну',
@@ -39,13 +39,17 @@ export class NotifyService {
       if (!trip) return;
       const money = formatMoney(e.amount, trip.currency);
       const how = e.fromFund
-        ? 'из кассы'
+        ? 'оплачено из кассы'
         : e.splitType === 'EQUAL'
-          ? `поровну на ${e.participantCount}`
-          : SPLIT_NOTE[e.splitType];
+          ? `делится поровну на ${e.participantCount}`
+          : `делится ${SPLIT_NOTE[e.splitType]}`;
       await this.bot.sendToChat(
         trip.telegramChatId!,
-        `💸 ${displayNameOf(actor)} добавил «${e.description}» — ${money} (${how})`,
+        [
+          `💸 <b>${escapeHtml(e.description)}</b> — <b>${money}</b>`,
+          `Добавил ${escapeHtml(displayNameOf(actor))} · ${how}`,
+        ].join('\n'),
+        true,
       );
     } catch (err) {
       this.logger.error(`expenseCreated notify failed: ${(err as Error).message}`);
@@ -62,7 +66,11 @@ export class NotifyService {
       if (!trip) return;
       await this.bot.sendToChat(
         trip.telegramChatId!,
-        `🗑 ${displayNameOf(actor)} удалил расход «${e.description}» — ${formatMoney(e.amount, trip.currency)}`,
+        [
+          `🗑 Удалён расход <b>${escapeHtml(e.description)}</b> — <b>${formatMoney(e.amount, trip.currency)}</b>`,
+          `Убрал ${escapeHtml(displayNameOf(actor))}`,
+        ].join('\n'),
+        true,
       );
     } catch (err) {
       this.logger.error(`expenseDeleted notify failed: ${(err as Error).message}`);
@@ -78,10 +86,14 @@ export class NotifyService {
     try {
       const trip = await this.notifiableTrip(tripId);
       if (!trip) return;
-      const who = memberName ? ` от ${memberName}` : '';
+      const who = memberName ? ` от ${escapeHtml(memberName)}` : '';
       await this.bot.sendToChat(
         trip.telegramChatId!,
-        `🏦 Взнос в кассу${who}: ${formatMoney(amount, trip.currency)} (внёс ${displayNameOf(actor)})`,
+        [
+          `🏦 <b>Взнос в кассу</b>${who} — <b>${formatMoney(amount, trip.currency)}</b>`,
+          `Внёс ${escapeHtml(displayNameOf(actor))}`,
+        ].join('\n'),
+        true,
       );
     } catch (err) {
       this.logger.error(`fundContributed notify failed: ${(err as Error).message}`);
@@ -97,13 +109,35 @@ export class NotifyService {
     try {
       const trip = await this.notifiableTrip(tripId);
       if (!trip) return;
-      const who = memberName ? ` — ${memberName}` : '';
+      const who = memberName ? ` — ${escapeHtml(memberName)}` : '';
       await this.bot.sendToChat(
         trip.telegramChatId!,
-        `🏧 Выплата из кассы${who}: ${formatMoney(amount, trip.currency)} (записал ${displayNameOf(actor)})`,
+        [
+          `🏧 <b>Выплата из кассы</b>${who} — <b>${formatMoney(amount, trip.currency)}</b>`,
+          `Записал ${escapeHtml(displayNameOf(actor))}`,
+        ].join('\n'),
+        true,
       );
     } catch (err) {
       this.logger.error(`fundPaidOut notify failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Обновляет закреплённое «табло баланса» в чате поездки после любой операции.
+   * В отличие от текстовых уведомлений, не зависит от настройки notifyChat —
+   * табло создаётся отдельной командой /board и живёт своей жизнью.
+   */
+  async balanceChanged(tripId: string): Promise<void> {
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { telegramChatId: true },
+      });
+      if (!trip?.telegramChatId) return;
+      await this.bot.refreshBalanceBoard(trip.telegramChatId);
+    } catch (err) {
+      this.logger.error(`balanceChanged failed: ${(err as Error).message}`);
     }
   }
 

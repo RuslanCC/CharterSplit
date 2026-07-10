@@ -9,13 +9,13 @@ import type { Expense, SplitType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input, Label, Select } from '@/components/ui/input';
-import { CategoryBadge } from '@/components/category-badge';
+import { EXPENSE_CATEGORIES, categoryIcon } from '@/lib/categories';
 import { cn } from '@/lib/utils';
 
 export interface ExpensePayload {
   description: string;
   amount: number; // минорные единицы
-  category?: string;
+  category?: string | null;
   paidByMemberId: string;
   fromFund: boolean;
   splitType: SplitType;
@@ -47,8 +47,19 @@ export function ExpenseForm({
   );
   const members = trip.members.filter((m) => m.isActive || referenced.has(m.id));
 
-  // Категория не редактируется: при создании — из кнопки, при правке — как была.
-  const category = initial ? initial.category : initialCategory ?? null;
+  // Категорию можно сменить: префилл из расхода (правка) или из кнопки (создание).
+  const [category, setCategory] = React.useState<string | null>(
+    initial ? initial.category : initialCategory ?? null,
+  );
+
+  // Список для выбора: стандартные категории + текущая нестандартная (импорт).
+  const categoryOptions = React.useMemo(() => {
+    const opts = EXPENSE_CATEGORIES.map((c) => ({ label: c.label, Icon: c.icon }));
+    if (category && !opts.some((o) => o.label === category)) {
+      opts.push({ label: category, Icon: categoryIcon(category) });
+    }
+    return opts;
+  }, [category]);
 
   const [description, setDescription] = React.useState(
     initial?.description ?? initialDescription ?? '',
@@ -133,7 +144,7 @@ export function ExpenseForm({
       await onSubmit({
         description: description.trim(),
         amount: amountMinor,
-        category: category ?? undefined,
+        category,
         paidByMemberId: payer,
         fromFund,
         splitType,
@@ -147,11 +158,39 @@ export function ExpenseForm({
 
   return (
     <div className="space-y-4 px-4 pb-8">
-      {category && (
-        <div>
-          <CategoryBadge category={category} />
+      <div>
+        <Label>Категория</Label>
+        <div className="flex flex-wrap gap-2">
+          {categoryOptions.map(({ label, Icon }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setCategory(label)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium',
+                category === label
+                  ? 'border-transparent bg-primary text-primary-foreground'
+                  : 'border-black/10 bg-card text-text',
+              )}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setCategory(null)}
+            className={cn(
+              'inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium',
+              category === null
+                ? 'border-transparent bg-primary text-primary-foreground'
+                : 'border-black/10 bg-card text-hint',
+            )}
+          >
+            Без категории
+          </button>
         </div>
-      )}
+      </div>
       <div>
         <Label>Описание</Label>
         <Input
