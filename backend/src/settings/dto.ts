@@ -18,4 +18,8 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsBoolean()
   allowGuestMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyChat?: boolean;
 }

@@ -12,6 +12,7 @@ import { ParticipantsModule } from './participants/participants.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { ImportModule } from './import/import.module';
 import { FundModule } from './fund/fund.module';
+import { SettlementsModule } from './settlements/settlements.module';
 import { SettingsModule } from './settings/settings.module';
 import { HistoryModule } from './history/history.module';
 import { TelegramModule } from './telegram/telegram.module';
@@ -42,6 +43,7 @@ const isProd = process.env.NODE_ENV === 'production';
     ExpensesModule,
     ImportModule,
     FundModule,
+    SettlementsModule,
     SettingsModule,
     HistoryModule,
     TelegramModule,

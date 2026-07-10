@@ -5,12 +5,8 @@ import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
 import { BalancesService } from './balances.service';
+import { displayNameOf } from '../common/format';
 import { ResolveTripDto, UpdateTripDto } from './dto';
-
-function displayNameOf(user: User): string {
-  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return name || user.username || `user_${user.telegramUserId}`;
-}
 
 @Injectable()
 export class TripsService {

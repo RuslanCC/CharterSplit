@@ -5,6 +5,7 @@ import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
 import { computeShares, ShareInput } from '../common/money';
+import { NotifyService } from '../telegram/notify.service';
 import { CreateExpenseDto, ExpenseParticipantDto, UpdateExpenseDto } from './dto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class ExpensesService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly history: HistoryService,
+    private readonly notify: NotifyService,
   ) {}
 
   async list(tripId: string, user: User) {
@@ -44,7 +46,7 @@ export class ExpensesService {
     const fromFund = dto.fromFund ?? false;
     const shares = fromFund ? [] : this.buildShares(dto.splitType, dto.amount, dto.participants);
 
-    return this.prisma.$transaction(async (tx) => {
+    const expense = await this.prisma.$transaction(async (tx) => {
       const expense = await tx.expense.create({
         data: {
           tripId,
@@ -85,6 +87,17 @@ export class ExpensesService {
       );
       return expense;
     });
+
+    // Fire-and-forget: сбой Telegram не влияет на ответ API.
+    void this.notify.expenseCreated(tripId, user, {
+      description: expense.description,
+      amount: expense.amount,
+      fromFund: expense.fromFund,
+      splitType: expense.splitType,
+      participantCount: expense.shares.length,
+    });
+
+    return expense;
   }
 
   async update(tripId: string, expenseId: string, user: User, dto: UpdateExpenseDto) {
@@ -163,7 +176,7 @@ export class ExpensesService {
     });
     if (!existing) throw new NotFoundException('expense not found');
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.expense.delete({ where: { id: expenseId } });
       await this.history.record(
         {
@@ -178,6 +191,13 @@ export class ExpensesService {
       );
       return { id: expenseId, deleted: true };
     });
+
+    void this.notify.expenseDeleted(tripId, user, {
+      description: existing.description,
+      amount: existing.amount,
+    });
+
+    return result;
   }
 
   private buildShares(

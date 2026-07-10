@@ -28,6 +28,7 @@ export interface TripSettings {
   roundingMode: string;
   locale: string;
   allowGuestMembers: boolean;
+  notifyChat: boolean;
 }
 
 export interface Trip {
@@ -83,10 +84,24 @@ export interface Transfer {
   toName: string;
 }
 
+export interface Settlement {
+  id: string;
+  tripId: string;
+  fromMemberId: string;
+  toMemberId: string;
+  amount: number;
+  note: string | null;
+  createdAt: string;
+  fromMember?: Member;
+  toMember?: Member;
+}
+
 export interface Balances {
   members: MemberBalance[];
   transfers: Transfer[];
+  settlements: (Settlement & { fromName: string; toName: string })[];
   fund: { balance: number };
+  totalSpent: number;
 }
 
 export interface FundTransaction {

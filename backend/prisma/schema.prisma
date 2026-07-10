@@ -38,11 +38,12 @@ model Trip {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  members  TripMember[]
-  expenses Expense[]
-  fundTxns FundTransaction[]
-  settings TripSettings?
-  history  OperationHistory[]
+  members     TripMember[]
+  expenses    Expense[]
+  fundTxns    FundTransaction[]
+  settlements Settlement[]
+  settings    TripSettings?
+  history     OperationHistory[]
 }
 
 enum MemberRole {
@@ -70,9 +71,11 @@ model TripMember {
   coveredBy         TripMember? @relation("FamilyCoverage", fields: [coveredByMemberId], references: [id], onDelete: SetNull)
   covers            TripMember[] @relation("FamilyCoverage")
 
-  paidExpenses  Expense[]         @relation("ExpensePayer")
-  expenseShares ExpenseShare[]
-  fundTxns      FundTransaction[] @relation("FundTxnMember")
+  paidExpenses    Expense[]         @relation("ExpensePayer")
+  expenseShares   ExpenseShare[]
+  fundTxns        FundTransaction[] @relation("FundTxnMember")
+  settlementsFrom Settlement[]      @relation("SettlementFrom")
+  settlementsTo   Settlement[]      @relation("SettlementTo")
 
   @@unique([tripId, userId])
   @@index([tripId])
@@ -142,6 +145,23 @@ model FundTransaction {
   @@index([tripId, createdAt])
 }
 
+// Погашение долга: должник (from) заплатил кредитору (to) вне приложения.
+// Не является расходом — учитывается только в балансах, не в totalSpent.
+model Settlement {
+  id           String     @id @default(cuid())
+  tripId       String
+  trip         Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fromMemberId String
+  fromMember   TripMember @relation("SettlementFrom", fields: [fromMemberId], references: [id])
+  toMemberId   String
+  toMember     TripMember @relation("SettlementTo", fields: [toMemberId], references: [id])
+  amount       Int // минорные единицы, > 0
+  note         String?
+  createdAt    DateTime   @default(now())
+
+  @@index([tripId, createdAt])
+}
+
 // Настройки поездки.
 model TripSettings {
   id                String    @id @default(cuid())
@@ -151,6 +171,7 @@ model TripSettings {
   roundingMode      String    @default("BANKERS")
   locale            String    @default("ru")
   allowGuestMembers Boolean   @default(true)
+  notifyChat        Boolean   @default(true) // сообщения бота о расходах и кассе в чат поездки
   updatedAt         DateTime  @updatedAt
 }
 

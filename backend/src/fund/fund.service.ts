@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
+import { NotifyService } from '../telegram/notify.service';
 import { FundAdjustDto, FundTxnDto } from './dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class FundService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly history: HistoryService,
+    private readonly notify: NotifyService,
   ) {}
 
   /** Баланс кассы + леджер движений. */
@@ -102,10 +104,12 @@ export class FundService {
     action: (typeof HistoryAction)[keyof typeof HistoryAction],
   ) {
     await this.access.assertMember(tripId, user);
+    let memberName: string | null = null;
     if (memberId) {
-      await this.access.assertMemberInTrip(tripId, memberId);
+      const member = await this.access.assertMemberInTrip(tripId, memberId);
+      memberName = member.displayName;
     }
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const txn = await tx.fundTransaction.create({
         data: {
           tripId,
@@ -129,5 +133,14 @@ export class FundService {
       );
       return txn;
     });
+
+    // Fire-and-forget: сбой Telegram не влияет на ответ API.
+    if (type === FundTxnType.CONTRIBUTION) {
+      void this.notify.fundContributed(tripId, user, memberName, amount);
+    } else if (type === FundTxnType.PAYOUT) {
+      void this.notify.fundPaidOut(tripId, user, memberName, amount);
+    }
+
+    return result;
   }
 }

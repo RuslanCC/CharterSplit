@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot, InlineKeyboard } from 'grammy';
 import { TripsService } from '../trips/trips.service';
+import { formatMoney } from '../common/format';
 
 /**
  * Телеграм-бот в режиме webhook. Устанавливает вебхук при старте и обрабатывает апдейты.
@@ -234,7 +235,7 @@ export class BotService implements OnModuleInit {
     try {
       const { trip, members, transfers, fund, totalSpent } =
         await this.trips.balancesForGroupChat(chatId, chatTitle);
-      const fmt = (minor: number) => this.formatMoney(minor, trip.currency);
+      const fmt = (minor: number) => formatMoney(minor, trip.currency);
 
       const lines: string[] = [
         `⛵️ «${trip.title}»`,
@@ -274,17 +275,21 @@ export class BotService implements OnModuleInit {
     }
   }
 
-  /** Сумма в минорных единицах → строка с валютой поездки. */
-  private formatMoney(minor: number, currency: string): string {
-    const value = minor / 100;
+  /**
+   * Отправляет текст в чат. Никогда не бросает: сбой Telegram не должен
+   * ломать бизнес-операцию, из которой пришло уведомление.
+   */
+  async sendToChat(telegramChatId: bigint, text: string): Promise<void> {
+    if (!this.bot || !this.ready) {
+      this.logger.warn('sendToChat skipped: bot is not ready');
+      return;
+    }
     try {
-      return new Intl.NumberFormat('ru-RU', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: 2,
-      }).format(value);
-    } catch {
-      return `${value.toFixed(2)} ${currency}`;
+      await this.bot.api.sendMessage(Number(telegramChatId), text);
+    } catch (e) {
+      this.logger.error(
+        `sendToChat failed for chat ${telegramChatId}: ${(e as Error).message}`,
+      );
     }
   }
 

@@ -22,6 +22,9 @@ export default function SettingsPage() {
   const [allowGuests, setAllowGuests] = React.useState(
     trip.settings?.allowGuestMembers ?? true,
   );
+  const [notifyChat, setNotifyChat] = React.useState(
+    trip.settings?.notifyChat ?? true,
+  );
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -35,6 +38,7 @@ export default function SettingsPage() {
       await api.patch<TripSettings>(`/trips/${trip.id}/settings`, {
         defaultSplit,
         allowGuestMembers: allowGuests,
+        notifyChat,
       });
       await reloadTrip();
       setMsg('Сохранено');
@@ -91,6 +95,15 @@ export default function SettingsPage() {
               type="checkbox"
               checked={allowGuests}
               onChange={(e) => setAllowGuests(e.target.checked)}
+              className="h-5 w-5"
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-xl bg-card px-4 py-3">
+            <span>Уведомления в чат поездки</span>
+            <input
+              type="checkbox"
+              checked={notifyChat}
+              onChange={(e) => setNotifyChat(e.target.checked)}
               className="h-5 w-5"
             />
           </label>

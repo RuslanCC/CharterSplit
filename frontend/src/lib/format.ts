@@ -39,6 +39,40 @@ export function formatDate(iso: string): string {
   }
 }
 
+/** Заголовок дня для группировки списков: «Сегодня», «Вчера» или «8 июля, вт». */
+export function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const startOfDay = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round(
+    (startOfDay(today) - startOfDay(d)) / 86_400_000,
+  );
+  if (diffDays === 0) return 'Сегодня';
+  if (diffDays === 1) return 'Вчера';
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      weekday: 'short',
+      ...(d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
+    }).format(d);
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+export function formatTime(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return '';
+  }
+}
+
 const ACTION_LABELS: Record<string, string> = {
   TRIP_CREATED: 'Поездка создана',
   TRIP_UPDATED: 'Поездка изменена',
@@ -49,6 +83,8 @@ const ACTION_LABELS: Record<string, string> = {
   EXPENSES_IMPORTED: 'Импорт из Splitwise',
   EXPENSE_UPDATED: 'Расход изменён',
   EXPENSE_DELETED: 'Расход удалён',
+  SETTLEMENT_RECORDED: 'Долг погашен',
+  SETTLEMENT_DELETED: 'Погашение удалено',
   FUND_CONTRIBUTED: 'Взнос в кассу',
   FUND_PAID_OUT: 'Выплата из кассы',
   FUND_ADJUSTED: 'Корректировка кассы',

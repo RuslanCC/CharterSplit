@@ -26,13 +26,17 @@ export class BalancesService {
    * на фактическом участнике, поэтому связь можно менять задним числом.
    */
   async compute(tripId: string) {
-    const [members, expenses, fundTxns] = await Promise.all([
+    const [members, expenses, fundTxns, settlements] = await Promise.all([
       this.prisma.tripMember.findMany({ where: { tripId } }),
       this.prisma.expense.findMany({
         where: { tripId, fromFund: false },
         include: { shares: true },
       }),
       this.prisma.fundTransaction.findMany({ where: { tripId } }),
+      this.prisma.settlement.findMany({
+        where: { tripId },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     const paid: Record<string, number> = {};
@@ -56,6 +60,15 @@ export class BalancesService {
       const eff = resolve(m.id);
       effectiveBalance[eff] =
         (effectiveBalance[eff] ?? 0) + (paid[m.id] ?? 0) - (owed[m.id] ?? 0);
+    }
+
+    // Погашения: должник заплатил кредитору → его баланс растёт к нулю,
+    // кредитору должны меньше. Учитываем на эффективных участниках (покрытие).
+    for (const s of settlements) {
+      const from = resolve(s.fromMemberId);
+      const to = resolve(s.toMemberId);
+      effectiveBalance[from] = (effectiveBalance[from] ?? 0) + s.amount;
+      effectiveBalance[to] = (effectiveBalance[to] ?? 0) - s.amount;
     }
 
     const memberBalances: MemberBalance[] = members.map((m) => {
@@ -101,9 +114,16 @@ export class BalancesService {
       toName: nameById.get(t.toMemberId) ?? '?',
     }));
 
+    const namedSettlements = settlements.map((s) => ({
+      ...s,
+      fromName: nameById.get(s.fromMemberId) ?? '?',
+      toName: nameById.get(s.toMemberId) ?? '?',
+    }));
+
     return {
       members: memberBalances,
       transfers: namedTransfers,
+      settlements: namedSettlements,
       fund: { balance: fundBalance },
       totalSpent,
     };
