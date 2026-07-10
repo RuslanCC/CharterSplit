@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Plus } from 'lucide-react';
 import { useTrip } from '../../providers';
 import { api, ApiError } from '@/lib/api';
 import { parseMoney, formatMoney, SPLIT_LABELS } from '@/lib/format';
@@ -12,14 +13,16 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { PageHeader } from '@/components/page';
 import { cn } from '@/lib/utils';
 
-export default function NewExpensePage() {
+function NewExpenseForm() {
   const { trip } = useTrip();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const active = trip.members.filter((m) => m.isActive);
 
-  const [description, setDescription] = React.useState('');
+  const [description, setDescription] = React.useState(
+    searchParams.get('desc') ?? '',
+  );
   const [amount, setAmount] = React.useState('');
-  const [category, setCategory] = React.useState('');
   const [payer, setPayer] = React.useState(active[0]?.id ?? '');
   const [fromFund, setFromFund] = React.useState(false);
   const [splitType, setSplitType] = React.useState<SplitType>(
@@ -29,20 +32,28 @@ export default function NewExpensePage() {
     Object.fromEntries(active.map((m) => [m.id, true])),
   );
   const [units, setUnits] = React.useState<Record<string, string>>({});
-  const [exact, setExact] = React.useState<Record<string, string>>({});
+  const [exact, setExact] = React.useState<Record<string, string[]>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  const amountMinor = parseMoney(amount);
+  const exactAuto = splitType === 'EXACT' && !fromFund;
+
+  const exactSubtotal = (memberId: string) =>
+    (exact[memberId] ?? []).reduce(
+      (s, v) => s + (parseMoney(v) || 0),
+      0,
+    );
   const exactSum = active
     .filter((m) => selected[m.id])
-    .reduce((s, m) => s + (parseMoney(exact[m.id] ?? '') || 0), 0);
+    .reduce((s, m) => s + exactSubtotal(m.id), 0);
+
+  const amountMinor = exactAuto ? exactSum : parseMoney(amount);
 
   async function submit() {
     setError(null);
     if (!description.trim()) return setError('Введите описание');
     if (!Number.isFinite(amountMinor) || amountMinor <= 0)
-      return setError('Введите сумму');
+      return setError(exactAuto ? 'Введите суммы участников' : 'Введите сумму');
     if (!payer) return setError('Выберите плательщика');
 
     const chosen = active.filter((m) => selected[m.id]);
@@ -56,14 +67,11 @@ export default function NewExpensePage() {
           memberId: m.id,
           shareUnits: Math.max(1, Number(units[m.id] ?? '1') || 1),
         }));
-      else {
+      else
         participants = chosen.map((m) => ({
           memberId: m.id,
-          amount: parseMoney(exact[m.id] ?? '') || 0,
+          amount: exactSubtotal(m.id),
         }));
-        if (exactSum !== amountMinor)
-          return setError('Сумма точных долей не равна сумме расхода');
-      }
     }
 
     setSaving(true);
@@ -71,7 +79,6 @@ export default function NewExpensePage() {
       await api.post(`/trips/${trip.id}/expenses`, {
         description: description.trim(),
         amount: amountMinor,
-        category: category.trim() || undefined,
         paidByMemberId: payer,
         fromFund,
         splitType,
@@ -96,7 +103,19 @@ export default function NewExpensePage() {
             placeholder="Например, ужин в порту"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {exactAuto ? (
+          <div>
+            <Label>Сумма ({trip.currency})</Label>
+            <div className="rounded-xl bg-card px-4 py-3">
+              <span className="font-semibold">
+                {formatMoney(exactSum, trip.currency)}
+              </span>
+              <span className="ml-2 text-xs text-hint">
+                считается автоматически
+              </span>
+            </div>
+          </div>
+        ) : (
           <div>
             <Label>Сумма ({trip.currency})</Label>
             <Input
@@ -106,15 +125,7 @@ export default function NewExpensePage() {
               placeholder="0.00"
             />
           </div>
-          <div>
-            <Label>Категория</Label>
-            <Input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="необязательно"
-            />
-          </div>
-        </div>
+        )}
 
         <div>
           <Label>Кто платил</Label>
@@ -165,9 +176,9 @@ export default function NewExpensePage() {
                 {active.map((m) => (
                   <div
                     key={m.id}
-                    className="flex items-center justify-between border-b border-black/[0.06] px-4 py-2.5 last:border-b-0"
+                    className="flex items-start justify-between border-b border-black/[0.06] px-4 py-2.5 last:border-b-0"
                   >
-                    <label className="flex items-center gap-3">
+                    <label className="flex items-center gap-3 py-1">
                       <input
                         type="checkbox"
                         checked={!!selected[m.id]}
@@ -192,31 +203,49 @@ export default function NewExpensePage() {
                       />
                     )}
                     {selected[m.id] && splitType === 'EXACT' && (
-                      <input
-                        value={exact[m.id] ?? ''}
-                        onChange={(e) =>
-                          setExact((x) => ({ ...x, [m.id]: e.target.value }))
-                        }
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className="w-24 rounded-lg border border-black/10 bg-bg px-2 py-1 text-right text-sm"
-                      />
+                      <div className="flex flex-col items-end gap-1">
+                        {(exact[m.id]?.length ? exact[m.id] : ['']).map(
+                          (v, i) => (
+                            <input
+                              key={i}
+                              value={v}
+                              onChange={(e) =>
+                                setExact((x) => {
+                                  const list = [...(x[m.id]?.length ? x[m.id] : [''])];
+                                  list[i] = e.target.value;
+                                  return { ...x, [m.id]: list };
+                                })
+                              }
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="w-24 rounded-lg border border-black/10 bg-bg px-2 py-1 text-right text-sm"
+                            />
+                          ),
+                        )}
+                        <button
+                          onClick={() =>
+                            setExact((x) => ({
+                              ...x,
+                              [m.id]: [...(x[m.id]?.length ? x[m.id] : ['']), ''],
+                            }))
+                          }
+                          className="flex items-center gap-1 text-xs text-link"
+                        >
+                          <Plus size={14} /> добавить
+                        </button>
+                        {(exact[m.id]?.length ?? 0) > 1 && (
+                          <div className="text-xs text-hint">
+                            = {formatMoney(exactSubtotal(m.id), trip.currency)}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}
               </Card>
               {splitType === 'EXACT' && (
-                <div
-                  className={cn(
-                    'mt-1.5 text-xs',
-                    exactSum === amountMinor ? 'text-positive' : 'text-hint',
-                  )}
-                >
-                  Сумма долей: {formatMoney(exactSum, trip.currency)} из{' '}
-                  {formatMoney(
-                    Number.isFinite(amountMinor) ? amountMinor : 0,
-                    trip.currency,
-                  )}
+                <div className="mt-1.5 text-xs text-hint">
+                  Итого: {formatMoney(exactSum, trip.currency)}
                 </div>
               )}
             </div>
@@ -230,5 +259,13 @@ export default function NewExpensePage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function NewExpensePage() {
+  return (
+    <React.Suspense>
+      <NewExpenseForm />
+    </React.Suspense>
   );
 }

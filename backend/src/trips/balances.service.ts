@@ -88,6 +88,11 @@ export class BalancesService {
     });
     fundBalance -= fundExpenses._sum.amount ?? 0;
 
+    // Общая сумма расходов поездки: личные + оплаченные из кассы.
+    const totalSpent =
+      expenses.reduce((sum, e) => sum + e.amount, 0) +
+      (fundExpenses._sum.amount ?? 0);
+
     // Обогащаем переводы именами.
     const nameById = new Map(members.map((m) => [m.id, m.displayName]));
     const namedTransfers = transfers.map((t) => ({
@@ -100,6 +105,7 @@ export class BalancesService {
       members: memberBalances,
       transfers: namedTransfers,
       fund: { balance: fundBalance },
+      totalSpent,
     };
   }
 }

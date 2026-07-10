@@ -50,6 +50,15 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    try {
+      await this.bot.api.setMyCommands([
+        { command: 'start', description: 'Открыть CharterSplit' },
+        { command: 'balance', description: 'Баланс поездки и взаиморасчёты' },
+      ]);
+    } catch (e) {
+      this.logger.warn(`setMyCommands failed: ${(e as Error).message}`);
+    }
+
     if (this.publicUrl) {
       const url = `${this.publicUrl.replace(/\/$/, '')}/api/telegram/webhook/${this.webhookSecret}`;
       try {
@@ -94,6 +103,22 @@ export class BotService implements OnModuleInit {
         await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
         await this.sendGroupTripMessage(ctx.chat.id, ctx.chat.title);
       }
+    });
+
+    bot.command('balance', async (ctx) => {
+      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
+        await this.sendBalanceMessage(ctx.chat.id, ctx.chat.title);
+        return;
+      }
+      const keyboard = appUrl
+        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
+        : undefined;
+      await ctx.reply(
+        'Команда /balance работает в групповом чате поездки. ' +
+          'Здесь откройте приложение, чтобы посмотреть балансы.',
+        keyboard ? { reply_markup: keyboard } : undefined,
+      );
     });
 
     // Бот добавлен в группу → создаём поездку чата и присылаем кнопку входа.
@@ -198,6 +223,68 @@ export class BotService implements OnModuleInit {
       this.logger.error(
         `group trip message failed for chat ${chatId}: ${(e as Error).message}`,
       );
+    }
+  }
+
+  /** Отправляет в группу сводку балансов: расходы, касса, взаиморасчёты. */
+  private async sendBalanceMessage(
+    chatId: number,
+    chatTitle?: string,
+  ): Promise<void> {
+    try {
+      const { trip, members, transfers, fund, totalSpent } =
+        await this.trips.balancesForGroupChat(chatId, chatTitle);
+      const fmt = (minor: number) => this.formatMoney(minor, trip.currency);
+
+      const lines: string[] = [
+        `⛵️ «${trip.title}»`,
+        '',
+        `💰 Всего расходов: ${fmt(totalSpent)}`,
+        `🏦 Касса: ${fmt(fund.balance)}`,
+      ];
+
+      const nonZero = members.filter((m) => m.balance !== 0);
+      if (nonZero.length > 0) {
+        lines.push('', 'Балансы:');
+        for (const m of nonZero) {
+          const sign = m.balance > 0 ? '+' : '';
+          lines.push(`• ${m.displayName}: ${sign}${fmt(m.balance)}`);
+        }
+      }
+
+      lines.push('', 'Взаиморасчёты:');
+      if (transfers.length === 0) {
+        lines.push('Все рассчитаны, долгов нет 🎉');
+      } else {
+        for (const t of transfers) {
+          lines.push(`• ${t.fromName} → ${t.toName}: ${fmt(t.amount)}`);
+        }
+      }
+
+      await this.bot!.api.sendMessage(chatId, lines.join('\n'), {
+        reply_markup: new InlineKeyboard().url(
+          '🧾 Открыть CharterSplit',
+          this.miniAppLink(chatId),
+        ),
+      });
+    } catch (e) {
+      this.logger.error(
+        `balance message failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /** Сумма в минорных единицах → строка с валютой поездки. */
+  private formatMoney(minor: number, currency: string): string {
+    const value = minor / 100;
+    try {
+      return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+      }).format(value);
+    } catch {
+      return `${value.toFixed(2)} ${currency}`;
     }
   }
 

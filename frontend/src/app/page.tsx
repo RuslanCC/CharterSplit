@@ -1,7 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { Settings, Users, ChevronRight } from 'lucide-react';
+import {
+  Settings,
+  Users,
+  ChevronRight,
+  Anchor,
+  UtensilsCrossed,
+  Fuel,
+  ShoppingCart,
+  CarTaxiFront,
+  Plus,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useTrip } from './providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
@@ -9,6 +20,15 @@ import { formatMoney } from '@/lib/format';
 import type { Balances, Expense } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { PageHeader, Loading, ErrorState } from '@/components/page';
+
+const EXPENSE_PRESETS: { label: string; icon: LucideIcon; desc?: string }[] = [
+  { label: 'Марина', icon: Anchor, desc: 'Марина' },
+  { label: 'Ресторан', icon: UtensilsCrossed, desc: 'Ресторан' },
+  { label: 'Топливо', icon: Fuel, desc: 'Топливо' },
+  { label: 'Продукты', icon: ShoppingCart, desc: 'Продукты' },
+  { label: 'Такси', icon: CarTaxiFront, desc: 'Такси' },
+  { label: 'Другое', icon: Plus },
+];
 
 export default function OverviewPage() {
   const { trip, userId } = useTrip();
@@ -69,6 +89,26 @@ export default function OverviewPage() {
         </div>
       </div>
 
+      <SectionTitle>Добавить расход</SectionTitle>
+      <div className="px-4">
+        <div className="grid grid-cols-3 gap-2">
+          {EXPENSE_PRESETS.map(({ label, icon: Icon, desc }) => (
+            <Link
+              key={label}
+              href={
+                desc
+                  ? `/expenses/new?desc=${encodeURIComponent(desc)}`
+                  : '/expenses/new'
+              }
+              className="flex flex-col items-center gap-1.5 rounded-xl bg-card py-3 text-sm font-medium active:opacity-70"
+            >
+              <Icon size={20} className="text-link" />
+              {label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
       <SectionTitle>Участники</SectionTitle>
       <div className="px-4">
         <Card>
@@ -111,12 +151,6 @@ export default function OverviewPage() {
             </Link>
           ))}
         </Card>
-        <Link
-          href="/expenses/new"
-          className="mt-3 block rounded-xl bg-primary py-3 text-center font-medium text-primary-foreground"
-        >
-          + Добавить расход
-        </Link>
       </div>
     </div>
   );

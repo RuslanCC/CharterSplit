@@ -57,6 +57,16 @@ export class TripsService {
   }
 
   /**
+   * Поездка группового чата с рассчитанными балансами (для команды /balance).
+   * Создаёт поездку, если её ещё нет.
+   */
+  async balancesForGroupChat(chatId: number, chatTitle?: string) {
+    const trip = await this.ensureForGroupChat(chatId, chatTitle);
+    const balances = await this.balances.compute(trip.id);
+    return { trip, ...balances };
+  }
+
+  /**
    * Регистрирует автора сообщения в группе как участника поездки (вызывается
    * ботом). Если участник добавлялся заглушкой по @username — привязывает её.
    * Владельца не назначает: OWNER станет первый открывший приложение.

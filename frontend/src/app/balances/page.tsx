@@ -10,11 +10,21 @@ import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { PageHeader, Loading, ErrorState, EmptyState } from '@/components/page';
 
 export default function BalancesPage() {
-  const { trip } = useTrip();
+  const { trip, userId } = useTrip();
   const { data, loading, error } = useAsync<Balances>(
     () => api.get(`/trips/${trip.id}/balances`),
     [trip.id],
   );
+
+  const myMember = trip.members.find((m) => m.userId === userId);
+  const my = myMember
+    ? data?.members.find((b) => b.memberId === myMember.id)
+    : undefined;
+  const myCovererName =
+    my && my.effectiveMemberId !== my.memberId
+      ? data?.members.find((b) => b.memberId === my.effectiveMemberId)
+          ?.displayName
+      : undefined;
 
   return (
     <div>
@@ -23,6 +33,35 @@ export default function BalancesPage() {
       {error && <ErrorState message={error} />}
       {data && (
         <div className="px-4 pb-4">
+          {my && (
+            <Card className="p-4 text-center">
+              <div className="text-xs text-hint">Мой баланс</div>
+              {myCovererName ? (
+                <div className="mt-1 text-lg font-semibold">
+                  покрывает {myCovererName}
+                </div>
+              ) : (
+                <div
+                  className={
+                    'mt-1 text-3xl font-bold ' +
+                    (my.balance < 0
+                      ? 'text-destructive'
+                      : my.balance > 0
+                        ? 'text-positive'
+                        : '')
+                  }
+                >
+                  {my.balance > 0 ? '+' : ''}
+                  {formatMoney(my.balance, trip.currency)}
+                </div>
+              )}
+              <div className="mt-1 text-xs text-hint">
+                внёс {formatMoney(my.paid, trip.currency)} · доля{' '}
+                {formatMoney(my.owed, trip.currency)}
+              </div>
+            </Card>
+          )}
+
           <SectionTitle>Кто кому платит</SectionTitle>
           <Card>
             {data.transfers.length === 0 && (
