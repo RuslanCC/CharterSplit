@@ -1,0 +1,169 @@
+// CharterSplit — модель данных. Все данные хранятся только в этой БД (PostgreSQL на VPS).
+// Деньги — целые минорные единицы (копейки/центы), без чисел с плавающей точкой.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Пользователь Telegram (идентификация по Telegram User ID).
+model User {
+  id             String   @id @default(cuid())
+  telegramUserId BigInt   @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  photoUrl       String?
+  languageCode   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  memberships TripMember[]
+  fundTxns    FundTransaction[]  @relation("FundTxnUser")
+  history     OperationHistory[] @relation("HistoryActor")
+}
+
+// Поездка (идентификация по Telegram Chat ID; запасные ключи — chatInstance / startParam).
+model Trip {
+  id             String   @id @default(cuid())
+  telegramChatId BigInt?  @unique
+  chatInstance   String?  @unique
+  startParam     String?  @unique
+  title          String
+  currency       String   @default("RUB")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members  TripMember[]
+  expenses Expense[]
+  fundTxns FundTransaction[]
+  settings TripSettings?
+  history  OperationHistory[]
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+// Участник поездки. userId = null → гость (без аккаунта Telegram).
+// coveredByMemberId — семейная связь: расходы этого участника покрывает другой участник
+// (доли и платежи при импорте записываются на покрывающего).
+model TripMember {
+  id                String      @id @default(cuid())
+  tripId            String
+  trip              Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId            String?
+  user              User?       @relation(fields: [userId], references: [id])
+  displayName       String
+  role              MemberRole  @default(MEMBER)
+  isActive          Boolean     @default(true)
+  joinedAt          DateTime    @default(now())
+  coveredByMemberId String?
+  coveredBy         TripMember? @relation("FamilyCoverage", fields: [coveredByMemberId], references: [id], onDelete: SetNull)
+  covers            TripMember[] @relation("FamilyCoverage")
+
+  paidExpenses  Expense[]         @relation("ExpensePayer")
+  expenseShares ExpenseShare[]
+  fundTxns      FundTransaction[] @relation("FundTxnMember")
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+}
+
+enum SplitType {
+  EQUAL // поровну
+  SHARES // по долям (весам)
+  EXACT // точными суммами
+}
+
+// Расход.
+model Expense {
+  id             String     @id @default(cuid())
+  tripId         String
+  trip           Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  description    String
+  amount         Int // минорные единицы
+  category       String?
+  spentAt        DateTime   @default(now())
+  paidByMemberId String
+  paidByMember   TripMember @relation("ExpensePayer", fields: [paidByMemberId], references: [id])
+  fromFund       Boolean    @default(false) // оплачено из судовой кассы
+  splitType      SplitType  @default(EQUAL)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  shares ExpenseShare[]
+
+  @@index([tripId, spentAt])
+}
+
+// Доля участника в расходе (связь «кто сколько должен»).
+model ExpenseShare {
+  id         String     @id @default(cuid())
+  expenseId  String
+  expense    Expense    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  memberId   String
+  member     TripMember @relation(fields: [memberId], references: [id])
+  shareUnits Int        @default(1) // вес для SHARES
+  amount     Int // итоговая сумма доли, минорные единицы
+
+  @@unique([expenseId, memberId])
+  @@index([memberId])
+}
+
+enum FundTxnType {
+  CONTRIBUTION // взнос в кассу
+  PAYOUT // выплата из кассы участнику
+  ADJUSTMENT // корректировка
+}
+
+// Движение по судовой кассе.
+model FundTransaction {
+  id        String      @id @default(cuid())
+  tripId    String
+  trip      Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  memberId  String?
+  member    TripMember? @relation("FundTxnMember", fields: [memberId], references: [id])
+  userId    String?
+  user      User?       @relation("FundTxnUser", fields: [userId], references: [id])
+  type      FundTxnType
+  amount    Int // всегда положительное; знак задаётся типом
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@index([tripId, createdAt])
+}
+
+// Настройки поездки.
+model TripSettings {
+  id                String    @id @default(cuid())
+  tripId            String    @unique
+  trip              Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  defaultSplit      SplitType @default(EQUAL)
+  roundingMode      String    @default("BANKERS")
+  locale            String    @default("ru")
+  allowGuestMembers Boolean   @default(true)
+  updatedAt         DateTime  @updatedAt
+}
+
+// История операций / аудит (просматривается в приложении).
+model OperationHistory {
+  id          String   @id @default(cuid())
+  tripId      String
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation("HistoryActor", fields: [actorUserId], references: [id])
+  action      String // EXPENSE_CREATED, FUND_CONTRIBUTED, MEMBER_ADDED ...
+  entityType  String // Expense | FundTransaction | TripMember | Trip | TripSettings
+  entityId    String?
+  payload     Json? // снимок / дифф
+  createdAt   DateTime @default(now())
+
+  @@index([tripId, createdAt])
+  @@index([tripId, action])
+}

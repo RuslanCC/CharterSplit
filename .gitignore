@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# env / secrets
+.env
+*.env
+!.env.example
+
+# builds
+dist/
+.next/
+out/
+build/
+**/*.tsbuildinfo
+
+# prisma generated client
+backend/node_modules/.prisma/
+backend/src/generated/
+
+# standalone edge (certbot state)
+certbot/conf/
+certbot/www/
+
+# logs / os
+*.log
+.DS_Store
+
+# docker local overrides
+docker-compose.override.yml
