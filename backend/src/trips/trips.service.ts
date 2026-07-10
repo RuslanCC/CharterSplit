@@ -21,6 +21,41 @@ export class TripsService {
     private readonly balances: BalancesService,
   ) {}
 
+  /**
+   * Находит или создаёт поездку для группового чата (вызывается ботом при
+   * добавлении в группу). Участников нет — первый открывший станет OWNER.
+   * startParam = "c<chatId>" — ключ для запуска Mini App по прямой ссылке.
+   */
+  async ensureForGroupChat(chatId: number, title?: string) {
+    const telegramChatId = BigInt(chatId);
+    const existing = await this.prisma.trip.findUnique({
+      where: { telegramChatId },
+    });
+    if (existing) return existing;
+
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          telegramChatId,
+          startParam: `c${chatId}`,
+          title: title?.trim() || 'Поездка',
+          settings: { create: {} },
+        },
+      });
+      await this.history.record(
+        {
+          tripId: created.id,
+          action: HistoryAction.TRIP_CREATED,
+          entityType: 'Trip',
+          entityId: created.id,
+          payload: { title: created.title, fromGroupChat: true },
+        },
+        tx,
+      );
+      return created;
+    });
+  }
+
   /** Находит поездку по Chat ID / chatInstance / startParam или создаёт новую. */
   async resolveOrCreate(user: User, dto: ResolveTripDto) {
     const keys: Prisma.TripWhereInput[] = [];
@@ -74,12 +109,18 @@ export class TripsService {
       });
       if (!existing) {
         await this.prisma.$transaction(async (tx) => {
+          // Поездка, созданная ботом от группы, не имеет владельца —
+          // первый открывший приложение становится OWNER.
+          const hasOwner =
+            (await tx.tripMember.count({
+              where: { tripId: trip!.id, role: MemberRole.OWNER },
+            })) > 0;
           const m = await tx.tripMember.create({
             data: {
               tripId: trip!.id,
               userId: user.id,
               displayName: displayNameOf(user),
-              role: MemberRole.MEMBER,
+              role: hasOwner ? MemberRole.MEMBER : MemberRole.OWNER,
             },
           });
           await this.history.record(

@@ -198,7 +198,10 @@ export default function ImportPage() {
               Экспорт группы из Splitwise (Export as spreadsheet)
             </div>
           </div>
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} />
+          {/* без accept: Android фильтрует по MIME и «гасит» csv-файлы
+              (text/comma-separated-values, application/octet-stream и т.п.);
+              валидность проверяет парсер */}
+          <input type="file" className="hidden" onChange={onFile} />
         </label>
 
         {file && (

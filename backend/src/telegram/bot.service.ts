@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot, InlineKeyboard } from 'grammy';
+import { TripsService } from '../trips/trips.service';
 
 /**
  * Телеграм-бот в режиме webhook. Устанавливает вебхук при старте и обрабатывает апдейты.
@@ -12,7 +13,10 @@ export class BotService implements OnModuleInit {
   private bot?: Bot;
   private ready = false;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly trips: TripsService,
+  ) {}
 
   private get token(): string {
     return this.config.get<string>('TELEGRAM_BOT_TOKEN', '');
@@ -51,7 +55,7 @@ export class BotService implements OnModuleInit {
       try {
         await this.bot.api.setWebhook(url, {
           secret_token: this.webhookSecret || undefined,
-          allowed_updates: ['message', 'callback_query'],
+          allowed_updates: ['message', 'callback_query', 'my_chat_member'],
         });
         this.logger.log(`webhook set to ${url}`);
       } catch (e) {
@@ -62,17 +66,47 @@ export class BotService implements OnModuleInit {
     }
   }
 
+  /**
+   * Прямая ссылка на Mini App с ключом поездки (start_param = "c<chatId>").
+   * Работает как URL-кнопка в группах, где web_app-кнопки запрещены.
+   * Требует включённого Main Mini App в BotFather.
+   */
+  private miniAppLink(chatId: number): string {
+    return `https://t.me/${this.bot!.botInfo.username}?startapp=c${chatId}`;
+  }
+
   private registerHandlers(bot: Bot): void {
     const appUrl = this.publicUrl;
+
     bot.command('start', async (ctx) => {
-      const keyboard = appUrl
-        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
-        : undefined;
-      await ctx.reply(
-        'CharterSplit — деление общих расходов в поездке.\n' +
-          'Откройте приложение, чтобы вести расходы, судовую кассу и взаиморасчёты.',
-        keyboard ? { reply_markup: keyboard } : undefined,
-      );
+      if (ctx.chat.type === 'private') {
+        const keyboard = appUrl
+          ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
+          : undefined;
+        await ctx.reply(
+          'CharterSplit — деление общих расходов в поездке.\n' +
+            'Откройте приложение, чтобы вести расходы, судовую кассу и взаиморасчёты.',
+          keyboard ? { reply_markup: keyboard } : undefined,
+        );
+        return;
+      }
+      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        await this.sendGroupTripMessage(ctx.chat.id, ctx.chat.title);
+      }
+    });
+
+    // Бот добавлен в группу → создаём поездку чата и присылаем кнопку входа.
+    bot.on('my_chat_member', async (ctx) => {
+      const chat = ctx.chat;
+      if (chat.type !== 'group' && chat.type !== 'supergroup') return;
+      const now = ctx.myChatMember.new_chat_member.status;
+      const before = ctx.myChatMember.old_chat_member.status;
+      const joined =
+        (now === 'member' || now === 'administrator') &&
+        before !== 'member' &&
+        before !== 'administrator';
+      if (!joined) return;
+      await this.sendGroupTripMessage(chat.id, chat.title);
     });
 
     bot.on('message', async (ctx) => {
@@ -80,6 +114,32 @@ export class BotService implements OnModuleInit {
         await ctx.reply('Откройте приложение через кнопку меню или команду /start.');
       }
     });
+  }
+
+  /** Находит/создаёт поездку группы и отправляет в чат приветствие с кнопкой. */
+  private async sendGroupTripMessage(
+    chatId: number,
+    chatTitle?: string,
+  ): Promise<void> {
+    try {
+      const trip = await this.trips.ensureForGroupChat(chatId, chatTitle);
+      await this.bot!.api.sendMessage(
+        chatId,
+        `⛵️ Поездка «${trip.title}» готова!\n` +
+          'Нажмите кнопку, чтобы открыть общие расходы, судовую кассу и взаиморасчёты. ' +
+          'Каждый участник чата попадёт в эту же поездку.',
+        {
+          reply_markup: new InlineKeyboard().url(
+            '🧾 Открыть CharterSplit',
+            this.miniAppLink(chatId),
+          ),
+        },
+      );
+    } catch (e) {
+      this.logger.error(
+        `group trip message failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
   }
 
   /** Обрабатывает входящий апдейт (из webhook-контроллера). */
