@@ -13,6 +13,11 @@ export function formatMoney(minor: number, currency = 'RUB'): string {
   }
 }
 
+/** 12345 → '123.45'; 10000 → '100' (для префилла инпутов, обратное к parseMoney). */
+export function moneyToInput(minor: number): string {
+  return (minor / 100).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+}
+
 /** '123.45' | '123,45' → 12345 (минорные единицы). */
 export function parseMoney(input: string): number {
   const normalized = input.replace(/\s/g, '').replace(',', '.');

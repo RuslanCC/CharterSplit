@@ -1,18 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  Settings,
-  Users,
-  ChevronRight,
-  Anchor,
-  UtensilsCrossed,
-  Fuel,
-  ShoppingCart,
-  CarTaxiFront,
-  Plus,
-} from 'lucide-react';
+import { Settings, Users, ChevronRight, Plus } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { EXPENSE_CATEGORIES } from '@/lib/categories';
+import { CategoryBadge } from '@/components/category-badge';
 import { useTrip } from './providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
@@ -21,12 +13,9 @@ import type { Balances, Expense } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { PageHeader, Loading, ErrorState } from '@/components/page';
 
-const EXPENSE_PRESETS: { label: string; icon: LucideIcon; desc?: string }[] = [
-  { label: 'Марина', icon: Anchor, desc: 'Марина' },
-  { label: 'Ресторан', icon: UtensilsCrossed, desc: 'Ресторан' },
-  { label: 'Топливо', icon: Fuel, desc: 'Топливо' },
-  { label: 'Продукты', icon: ShoppingCart, desc: 'Продукты' },
-  { label: 'Такси', icon: CarTaxiFront, desc: 'Такси' },
+// Кнопки быстрого добавления: категория проставляется автоматически.
+const EXPENSE_PRESETS: { label: string; icon: LucideIcon; cat?: string }[] = [
+  ...EXPENSE_CATEGORIES.map((c) => ({ ...c, cat: c.label })),
   { label: 'Другое', icon: Plus },
 ];
 
@@ -92,12 +81,12 @@ export default function OverviewPage() {
       <SectionTitle>Добавить расход</SectionTitle>
       <div className="px-4">
         <div className="grid grid-cols-3 gap-2">
-          {EXPENSE_PRESETS.map(({ label, icon: Icon, desc }) => (
+          {EXPENSE_PRESETS.map(({ label, icon: Icon, cat }) => (
             <Link
               key={label}
               href={
-                desc
-                  ? `/expenses/new?desc=${encodeURIComponent(desc)}`
+                cat
+                  ? `/expenses/new?cat=${encodeURIComponent(cat)}`
                   : '/expenses/new'
               }
               className="flex flex-col items-center gap-1.5 rounded-xl bg-card py-3 text-sm font-medium active:opacity-70"
@@ -138,7 +127,10 @@ export default function OverviewPage() {
             <Link key={e.id} href={`/expenses`}>
               <CardRow>
                 <div>
-                  <div className="font-medium">{e.description}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{e.description}</span>
+                    {e.category && <CategoryBadge category={e.category} />}
+                  </div>
                   <div className="text-xs text-hint">
                     {e.paidByMember?.displayName ?? ''}
                     {e.fromFund ? ' · из кассы' : ''}

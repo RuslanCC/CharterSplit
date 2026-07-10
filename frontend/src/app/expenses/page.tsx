@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTrip } from '../providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { formatMoney, formatDate, SPLIT_LABELS } from '@/lib/format';
 import type { Expense } from '@/lib/types';
 import { Card, CardRow } from '@/components/ui/card';
+import { CategoryBadge } from '@/components/category-badge';
 import { PageHeader, Loading, ErrorState, EmptyState } from '@/components/page';
 
 export default function ExpensesPage() {
@@ -44,7 +45,12 @@ export default function ExpensesPage() {
             {data.map((e) => (
               <CardRow key={e.id}>
                 <div className="min-w-0">
-                  <div className="font-medium">{e.description}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-medium">
+                      {e.description}
+                    </span>
+                    {e.category && <CategoryBadge category={e.category} />}
+                  </div>
                   <div className="text-xs text-hint">
                     {formatDate(e.spentAt)} · {e.paidByMember?.displayName}
                     {e.fromFund
@@ -56,6 +62,12 @@ export default function ExpensesPage() {
                   <span className="font-semibold">
                     {formatMoney(e.amount, trip.currency)}
                   </span>
+                  <Link
+                    href={`/expenses/${e.id}/edit`}
+                    className="text-hint active:text-link"
+                  >
+                    <Pencil size={16} />
+                  </Link>
                   <button
                     onClick={() => remove(e.id)}
                     className="text-hint active:text-destructive"
