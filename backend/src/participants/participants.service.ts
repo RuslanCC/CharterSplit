@@ -31,9 +31,32 @@ export class ParticipantsService {
     if (settings && !settings.allowGuestMembers) {
       throw new ForbiddenException('guest members are disabled for this trip');
     }
+    const username = dto.telegramUsername
+      ? dto.telegramUsername.replace(/^@/, '').toLowerCase()
+      : null;
+    const displayName =
+      dto.displayName?.trim() || (username ? `@${username}` : '');
+    if (!displayName) {
+      throw new BadRequestException('displayName or telegramUsername required');
+    }
+    if (username) {
+      // Ник уже занят: заглушкой или участником, чей аккаунт носит этот ник.
+      const taken = await this.prisma.tripMember.findFirst({
+        where: {
+          tripId,
+          OR: [
+            { telegramUsername: username },
+            { user: { username: { equals: username, mode: 'insensitive' } } },
+          ],
+        },
+      });
+      if (taken) {
+        throw new BadRequestException(`@${username} уже есть в поездке`);
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       const member = await tx.tripMember.create({
-        data: { tripId, displayName: dto.displayName.trim(), userId: null },
+        data: { tripId, displayName, telegramUsername: username, userId: null },
       });
       await this.history.record(
         {
@@ -42,7 +65,11 @@ export class ParticipantsService {
           action: HistoryAction.MEMBER_ADDED,
           entityType: 'TripMember',
           entityId: member.id,
-          payload: { displayName: member.displayName, guest: true },
+          payload: {
+            displayName: member.displayName,
+            guest: true,
+            ...(username ? { telegramUsername: username } : {}),
+          },
         },
         tx,
       );

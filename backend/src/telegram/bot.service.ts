@@ -91,6 +91,7 @@ export class BotService implements OnModuleInit {
         return;
       }
       if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
         await this.sendGroupTripMessage(ctx.chat.id, ctx.chat.title);
       }
     });
@@ -106,14 +107,71 @@ export class BotService implements OnModuleInit {
         before !== 'member' &&
         before !== 'administrator';
       if (!joined) return;
+      await this.registerSender(chat.id, chat.title, ctx.myChatMember.from);
       await this.sendGroupTripMessage(chat.id, chat.title);
+    });
+
+    // Сервисные сообщения о входе/выходе приходят даже при включённом privacy mode.
+    bot.on('message:new_chat_members', async (ctx) => {
+      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return;
+      for (const u of ctx.message.new_chat_members) {
+        if (u.is_bot) continue;
+        await this.registerSender(ctx.chat.id, ctx.chat.title, u);
+      }
+    });
+
+    bot.on('message:left_chat_member', async (ctx) => {
+      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return;
+      const u = ctx.message.left_chat_member;
+      if (u.is_bot) return;
+      try {
+        await this.trips.deactivateChatMember(ctx.chat.id, u.id);
+      } catch (e) {
+        this.logger.error(
+          `deactivate member failed for chat ${ctx.chat.id}: ${(e as Error).message}`,
+        );
+      }
     });
 
     bot.on('message', async (ctx) => {
       if (appUrl && ctx.chat?.type === 'private') {
         await ctx.reply('Откройте приложение через кнопку меню или команду /start.');
+        return;
+      }
+      // Пассивный сбор участников: автор сообщения в группе попадает в поездку.
+      // Обычные сообщения бот видит только с выключенным privacy mode
+      // (BotFather → /setprivacy → Disable) или с правами администратора.
+      if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
+        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
       }
     });
+  }
+
+  /** Регистрирует пользователя Telegram как участника поездки группы. */
+  private async registerSender(
+    chatId: number,
+    chatTitle: string | undefined,
+    from?: {
+      id: number;
+      is_bot: boolean;
+      username?: string;
+      first_name: string;
+      last_name?: string;
+    },
+  ): Promise<void> {
+    if (!from || from.is_bot) return;
+    try {
+      await this.trips.registerChatMember(chatId, chatTitle, {
+        id: from.id,
+        username: from.username,
+        firstName: from.first_name,
+        lastName: from.last_name,
+      });
+    } catch (e) {
+      this.logger.error(
+        `register member failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+    }
   }
 
   /** Находит/создаёт поездку группы и отправляет в чат приветствие с кнопкой. */
@@ -127,7 +185,8 @@ export class BotService implements OnModuleInit {
         chatId,
         `⛵️ Поездка «${trip.title}» готова!\n` +
           'Нажмите кнопку, чтобы открыть общие расходы, судовую кассу и взаиморасчёты. ' +
-          'Каждый участник чата попадёт в эту же поездку.',
+          'Каждый, кто напишет в чат или откроет приложение, попадёт в эту же поездку; ' +
+          'остальных можно добавить по @username на экране «Участники».',
         {
           reply_markup: new InlineKeyboard().url(
             '🧾 Открыть CharterSplit',

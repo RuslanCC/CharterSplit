@@ -30,10 +30,15 @@ export default function MembersPage() {
 
   async function addGuest() {
     setError(null);
-    if (!name.trim()) return;
+    const value = name.trim();
+    if (!value) return;
     setBusy(true);
     try {
-      await api.post(`/trips/${trip.id}/members`, { displayName: name.trim() });
+      // Ввод с @ — добавление по нику Telegram, иначе — гость по имени.
+      const body = value.startsWith('@')
+        ? { telegramUsername: value }
+        : { displayName: value };
+      await api.post(`/trips/${trip.id}/members`, body);
       setName('');
       await refresh();
     } catch (e) {
@@ -78,7 +83,9 @@ export default function MembersPage() {
                   <div className="text-xs text-hint">
                     {m.userId
                       ? `Telegram${m.user?.username ? ` · @${m.user.username}` : ''}`
-                      : 'гость'}
+                      : m.telegramUsername
+                        ? `@${m.telegramUsername} · ещё не открыл приложение`
+                        : 'гость'}
                     {m.role === 'OWNER' ? ' · владелец' : ''}
                     {m.isActive ? '' : ' · деактивирован'}
                   </div>
@@ -117,16 +124,20 @@ export default function MembersPage() {
           (учитывается при импорте из Splitwise).
         </div>
 
-        <SectionTitle className="px-0">Добавить гостя</SectionTitle>
+        <SectionTitle className="px-0">Добавить участника</SectionTitle>
         <div className="flex gap-2">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Имя гостя"
+            placeholder="Имя гостя или @username"
           />
           <Button onClick={addGuest} disabled={busy}>
             Добавить
           </Button>
+        </div>
+        <div className="mt-1.5 px-1 text-xs text-hint">
+          С @ — участник по нику Telegram: когда он откроет приложение,
+          запись привяжется к его аккаунту автоматически.
         </div>
         {error && <div className="mt-2 text-sm text-destructive">{error}</div>}
       </div>

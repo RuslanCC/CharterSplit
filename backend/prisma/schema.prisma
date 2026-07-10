@@ -51,6 +51,8 @@ enum MemberRole {
 }
 
 // Участник поездки. userId = null → гость (без аккаунта Telegram).
+// telegramUsername — ник, указанный при добавлении «по @username» (lowercase, без @);
+// при первом входе пользователя с таким ником запись привязывается к его аккаунту.
 // coveredByMemberId — семейная связь: расходы этого участника покрывает другой участник
 // (доли и платежи при импорте записываются на покрывающего).
 model TripMember {
@@ -60,6 +62,7 @@ model TripMember {
   userId            String?
   user              User?       @relation(fields: [userId], references: [id])
   displayName       String
+  telegramUsername  String?
   role              MemberRole  @default(MEMBER)
   isActive          Boolean     @default(true)
   joinedAt          DateTime    @default(now())

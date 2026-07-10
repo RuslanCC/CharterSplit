@@ -7,6 +7,8 @@ export interface Member {
   tripId: string;
   userId: string | null;
   displayName: string;
+  /** Ник Telegram (без @), если участника добавили по @username. */
+  telegramUsername?: string | null;
   role: MemberRole;
   isActive: boolean;
   joinedAt: string;
