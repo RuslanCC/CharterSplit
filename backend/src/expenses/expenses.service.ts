@@ -44,6 +44,9 @@ export class ExpensesService {
     ]);
 
     const fromFund = dto.fromFund ?? false;
+    // dto.amount — база (счёт без чаевых); доли считаются от базы, а в БД
+    // amount хранится как итог (база + чаевые). Чаевые есть только у личных расходов.
+    const tip = fromFund ? 0 : dto.tipAmount ?? 0;
     const shares = fromFund ? [] : this.buildShares(dto.splitType, dto.amount, dto.participants);
 
     const expense = await this.prisma.$transaction(async (tx) => {
@@ -51,7 +54,8 @@ export class ExpensesService {
         data: {
           tripId,
           description: dto.description.trim(),
-          amount: dto.amount,
+          amount: dto.amount + tip,
+          tipAmount: tip,
           category: dto.category ?? null,
           spentAt: dto.spentAt ? new Date(dto.spentAt) : new Date(),
           paidByMemberId: dto.paidByMemberId,
@@ -79,6 +83,7 @@ export class ExpensesService {
           payload: {
             description: expense.description,
             amount: expense.amount,
+            tipAmount: expense.tipAmount,
             fromFund: expense.fromFund,
             splitType: expense.splitType,
           },
@@ -109,10 +114,12 @@ export class ExpensesService {
     });
     if (!existing) throw new NotFoundException('expense not found');
 
-    const amount = dto.amount ?? existing.amount;
     const splitType = dto.splitType ?? existing.splitType;
     const fromFund = dto.fromFund ?? existing.fromFund;
     const paidByMemberId = dto.paidByMemberId ?? existing.paidByMemberId;
+    // База (без чаевых): из dto.amount либо восстанавливается из хранимого итога.
+    const base = dto.amount ?? existing.amount - existing.tipAmount;
+    const tip = fromFund ? 0 : dto.tipAmount ?? existing.tipAmount;
 
     const participants: ExpenseParticipantDto[] | undefined =
       dto.participants ??
@@ -127,7 +134,7 @@ export class ExpensesService {
       ...(participants ?? []).map((p) => p.memberId),
     ]);
 
-    const shares = fromFund ? [] : this.buildShares(splitType, amount, participants);
+    const shares = fromFund ? [] : this.buildShares(splitType, base, participants);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.expenseShare.deleteMany({ where: { expenseId } });
@@ -137,7 +144,8 @@ export class ExpensesService {
           ...(dto.description !== undefined
             ? { description: dto.description.trim() }
             : {}),
-          amount,
+          amount: base + tip,
+          tipAmount: tip,
           ...(dto.category !== undefined ? { category: dto.category } : {}),
           ...(dto.spentAt !== undefined ? { spentAt: new Date(dto.spentAt) } : {}),
           paidByMemberId,

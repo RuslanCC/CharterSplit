@@ -78,6 +78,23 @@ export function computeShares(
   }));
 }
 
+/**
+ * Доли чаевых: делятся поровну между участниками расхода (тот же
+ * детерминированный остаток, что и EQUAL). Возвращает map memberId → сумма.
+ */
+export function computeTipShares(
+  tipAmount: number,
+  memberIds: string[],
+): Record<string, number> {
+  if (tipAmount <= 0 || memberIds.length === 0) return {};
+  const shares = computeShares(
+    SplitType.EQUAL,
+    tipAmount,
+    memberIds.map((id) => ({ memberId: id })),
+  );
+  return Object.fromEntries(shares.map((s) => [s.memberId, s.amount]));
+}
+
 export interface Transfer {
   fromMemberId: string;
   toMemberId: string;

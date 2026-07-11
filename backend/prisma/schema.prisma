@@ -102,6 +102,10 @@ model Expense {
   paidByMemberId String
   paidByMember   TripMember @relation("ExpensePayer", fields: [paidByMemberId], references: [id])
   fromFund       Boolean    @default(false) // оплачено из судовой кассы
+  // Чаевые (минорные единицы): делятся поровну между участниками расхода
+  // независимо от splitType. amount уже включает чаевые; доли (ExpenseShare)
+  // хранятся без них — чаевые распределяются на этапе расчёта балансов/экспорта.
+  tipAmount      Int        @default(0)
   splitType      SplitType  @default(EQUAL)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt

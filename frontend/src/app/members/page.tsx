@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { UserX, UserCheck } from 'lucide-react';
+import { UserX, UserCheck, Pencil, Check, X } from 'lucide-react';
 import { useTrip } from '../providers';
 import { api, ApiError } from '@/lib/api';
 import type { Member } from '@/lib/types';
@@ -16,6 +16,8 @@ export default function MembersPage() {
   const [name, setName] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editName, setEditName] = React.useState('');
 
   const refresh = React.useCallback(async () => {
     const list = await api.get<Member[]>(`/trips/${trip.id}/members`);
@@ -57,6 +59,29 @@ export default function MembersPage() {
     await refresh();
   }
 
+  function startEdit(m: Member) {
+    setError(null);
+    setEditingId(m.id);
+    setEditName(m.displayName);
+  }
+
+  async function saveEdit(m: Member) {
+    const value = editName.trim();
+    if (!value || value === m.displayName) {
+      setEditingId(null);
+      return;
+    }
+    setError(null);
+    try {
+      // Меняем только displayName — привязка к Telegram (userId/telegramUsername) не трогается.
+      await api.patch(`/trips/${trip.id}/members/${m.id}`, { displayName: value });
+      setEditingId(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    }
+  }
+
   async function setCoveredBy(m: Member, coveredByMemberId: string | null) {
     setError(null);
     try {
@@ -77,25 +102,71 @@ export default function MembersPage() {
               key={m.id}
               className="border-b border-black/[0.06] px-4 py-3 last:border-b-0"
             >
-              <div className="flex items-center justify-between">
-                <div className={m.isActive ? '' : 'opacity-50'}>
-                  <div className="font-medium">{m.displayName}</div>
-                  <div className="text-xs text-hint">
-                    {m.userId
-                      ? `Telegram${m.user?.username ? ` · @${m.user.username}` : ''}`
-                      : m.telegramUsername
-                        ? `@${m.telegramUsername} · ещё не открыл приложение`
-                        : 'гость'}
-                    {m.role === 'OWNER' ? ' · владелец' : ''}
-                    {m.isActive ? '' : ' · деактивирован'}
+              <div className="flex items-center justify-between gap-2">
+                {editingId === m.id ? (
+                  <Input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveEdit(m);
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                    maxLength={80}
+                    placeholder="Имя участника"
+                    className="py-1.5"
+                  />
+                ) : (
+                  <div className={`min-w-0 ${m.isActive ? '' : 'opacity-50'}`}>
+                    <div className="truncate font-medium">{m.displayName}</div>
+                    <div className="text-xs text-hint">
+                      {m.userId
+                        ? `Telegram${m.user?.username ? ` · @${m.user.username}` : ''}`
+                        : m.telegramUsername
+                          ? `@${m.telegramUsername} · ещё не открыл приложение`
+                          : 'гость'}
+                      {m.role === 'OWNER' ? ' · владелец' : ''}
+                      {m.isActive ? '' : ' · деактивирован'}
+                    </div>
                   </div>
+                )}
+                <div className="flex shrink-0 items-center gap-3 text-hint">
+                  {editingId === m.id ? (
+                    <>
+                      <button
+                        onClick={() => void saveEdit(m)}
+                        className="active:opacity-60"
+                        aria-label="Сохранить имя"
+                      >
+                        <Check size={18} />
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="active:opacity-60"
+                        aria-label="Отменить"
+                      >
+                        <X size={18} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => startEdit(m)}
+                        className="active:opacity-60"
+                        aria-label="Переименовать"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => toggle(m)}
+                        className="active:opacity-60"
+                        aria-label={m.isActive ? 'Деактивировать' : 'Активировать'}
+                      >
+                        {m.isActive ? <UserX size={18} /> : <UserCheck size={18} />}
+                      </button>
+                    </>
+                  )}
                 </div>
-                <button
-                  onClick={() => toggle(m)}
-                  className="text-hint active:opacity-60"
-                >
-                  {m.isActive ? <UserX size={18} /> : <UserCheck size={18} />}
-                </button>
               </div>
               {m.isActive && (
                 <div className="mt-2 flex items-center gap-2 text-xs">

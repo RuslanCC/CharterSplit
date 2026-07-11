@@ -101,7 +101,9 @@ export default function HistoryPage() {
                   <div className="font-medium">{actionLabel(h.action)}</div>
                   <div className="text-xs text-hint">
                     {formatDate(h.createdAt)}
-                    {h.actor?.firstName ? ` · ${h.actor.firstName}` : ''}
+                    {h.actorName ?? h.actor?.firstName
+                      ? ` · ${h.actorName ?? h.actor?.firstName}`
+                      : ''}
                     {h.payload?.description ? ` · ${h.payload.description}` : ''}
                   </div>
                 </div>

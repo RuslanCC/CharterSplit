@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeTipShares } from '../common/money';
 
 /**
  * Экспорт расходов поездки в CSV, совместимый с форматом Splitwise
@@ -47,10 +48,17 @@ export class ExportService {
       if (e.fromFund) {
         // Оплата из кассы: личных долей нет — колонки участников пустые.
       } else {
+        // Доли в БД без чаевых; чаевые делятся поровну и добавляются к доле.
+        const tips = computeTipShares(
+          e.tipAmount,
+          e.shares.map((s) => s.memberId),
+        );
         for (const m of members) {
           const idx = memberIndex.get(m.id)!;
           const paid = e.paidByMemberId === m.id ? e.amount : 0;
-          const share = e.shares.find((s) => s.memberId === m.id)?.amount ?? 0;
+          const share =
+            (e.shares.find((s) => s.memberId === m.id)?.amount ?? 0) +
+            (tips[m.id] ?? 0);
           const net = paid - share;
           cells[idx] = net === 0 ? '' : this.minorToDecimal(net);
         }

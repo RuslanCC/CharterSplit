@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FundTxnType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { settle } from '../common/money';
+import { settle, computeTipShares } from '../common/money';
 import { buildCoverageResolver } from '../common/coverage';
 
 export interface MemberBalance {
@@ -47,9 +47,20 @@ export class BalancesService {
     }
 
     for (const e of expenses) {
+      // e.amount — итог (база + чаевые); доли хранятся без чаевых, поэтому
+      // чаевые распределяются поровну между участниками расхода здесь.
       paid[e.paidByMemberId] = (paid[e.paidByMemberId] ?? 0) + e.amount;
       for (const s of e.shares) {
         owed[s.memberId] = (owed[s.memberId] ?? 0) + s.amount;
+      }
+      if (e.tipAmount > 0) {
+        const tips = computeTipShares(
+          e.tipAmount,
+          e.shares.map((s) => s.memberId),
+        );
+        for (const [mid, amt] of Object.entries(tips)) {
+          owed[mid] = (owed[mid] ?? 0) + amt;
+        }
       }
     }
 

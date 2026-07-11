@@ -80,8 +80,27 @@ export class HistoryService {
 
     const hasMore = items.length > take;
     const page = hasMore ? items.slice(0, take) : items;
+
+    // Имя автора берём из записи участника этой поездки (может быть переименовано),
+    // чтобы история показывала заданное имя, а не имя из Telegram.
+    const actorIds = [
+      ...new Set(page.map((i) => i.actorUserId).filter((id): id is string => !!id)),
+    ];
+    const memberNames = actorIds.length
+      ? await this.prisma.tripMember.findMany({
+          where: { tripId, userId: { in: actorIds } },
+          select: { userId: true, displayName: true },
+        })
+      : [];
+    const nameByUserId = new Map(
+      memberNames.map((m) => [m.userId as string, m.displayName]),
+    );
+
     return {
-      items: page,
+      items: page.map((i) => ({
+        ...i,
+        actorName: i.actorUserId ? nameByUserId.get(i.actorUserId) ?? null : null,
+      })),
       nextCursor: hasMore ? page[page.length - 1].id : null,
     };
   }

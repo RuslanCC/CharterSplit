@@ -47,7 +47,7 @@ export class NotifyService {
         trip.telegramChatId!,
         [
           `💸 <b>${escapeHtml(e.description)}</b> — <b>${money}</b>`,
-          `Добавил ${escapeHtml(displayNameOf(actor))} · ${how}`,
+          `Добавил ${escapeHtml(await this.actorName(tripId, actor))} · ${how}`,
         ].join('\n'),
         true,
       );
@@ -68,7 +68,7 @@ export class NotifyService {
         trip.telegramChatId!,
         [
           `🗑 Удалён расход <b>${escapeHtml(e.description)}</b> — <b>${formatMoney(e.amount, trip.currency)}</b>`,
-          `Убрал ${escapeHtml(displayNameOf(actor))}`,
+          `Убрал ${escapeHtml(await this.actorName(tripId, actor))}`,
         ].join('\n'),
         true,
       );
@@ -91,7 +91,7 @@ export class NotifyService {
         trip.telegramChatId!,
         [
           `🏦 <b>Взнос в кассу</b>${who} — <b>${formatMoney(amount, trip.currency)}</b>`,
-          `Внёс ${escapeHtml(displayNameOf(actor))}`,
+          `Внёс ${escapeHtml(await this.actorName(tripId, actor))}`,
         ].join('\n'),
         true,
       );
@@ -114,7 +114,7 @@ export class NotifyService {
         trip.telegramChatId!,
         [
           `🏧 <b>Выплата из кассы</b>${who} — <b>${formatMoney(amount, trip.currency)}</b>`,
-          `Записал ${escapeHtml(displayNameOf(actor))}`,
+          `Записал ${escapeHtml(await this.actorName(tripId, actor))}`,
         ].join('\n'),
         true,
       );
@@ -139,6 +139,18 @@ export class NotifyService {
     } catch (err) {
       this.logger.error(`balanceChanged failed: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Имя автора действия для сообщений в чат: заданное в поездке имя участника
+   * (может быть переименовано), с откатом на имя из Telegram, если участник не найден.
+   */
+  private async actorName(tripId: string, actor: User): Promise<string> {
+    const member = await this.prisma.tripMember.findFirst({
+      where: { tripId, userId: actor.id },
+      select: { displayName: true },
+    });
+    return member?.displayName || displayNameOf(actor);
   }
 
   /** Поездка с привязанным чатом и включёнными уведомлениями, иначе null. */

@@ -53,7 +53,10 @@ export interface Expense {
   id: string;
   tripId: string;
   description: string;
+  /** Итоговая сумма расхода (включая чаевые), минорные единицы. */
   amount: number;
+  /** Чаевые (минорные единицы), делятся поровну между участниками. */
+  tipAmount: number;
   category: string | null;
   spentAt: string;
   paidByMemberId: string;
@@ -140,6 +143,8 @@ export interface HistoryItem {
   entityId: string | null;
   payload: any;
   createdAt: string;
+  /** Имя автора в этой поездке (может быть переименовано); null — автор не участник. */
+  actorName?: string | null;
   actor?: {
     id: string;
     firstName: string | null;

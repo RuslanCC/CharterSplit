@@ -54,6 +54,11 @@ export class CreateExpenseDto {
   @IsBoolean()
   fromFund?: boolean;
 
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  tipAmount?: number; // чаевые (минорные единицы), делятся поровну между участниками
+
   @IsEnum(SplitType)
   splitType!: SplitType;
 
@@ -91,6 +96,11 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsBoolean()
   fromFund?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  tipAmount?: number; // чаевые (минорные единицы), делятся поровну между участниками
 
   @IsOptional()
   @IsEnum(SplitType)

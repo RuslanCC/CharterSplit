@@ -14,7 +14,8 @@ import { cn } from '@/lib/utils';
 
 export interface ExpensePayload {
   description: string;
-  amount: number; // минорные единицы
+  amount: number; // база (без чаевых), минорные единицы
+  tipAmount?: number; // чаевые, минорные единицы
   category?: string | null;
   paidByMemberId: string;
   fromFund: boolean;
@@ -64,8 +65,12 @@ export function ExpenseForm({
   const [description, setDescription] = React.useState(
     initial?.description ?? initialDescription ?? '',
   );
+  // В форме «Сумма» — база (без чаевых): у сохранённого расхода amount = итог.
   const [amount, setAmount] = React.useState(
-    initial ? moneyToInput(initial.amount) : '',
+    initial ? moneyToInput(initial.amount - initial.tipAmount) : '',
+  );
+  const [tip, setTip] = React.useState(
+    initial ? moneyToInput(initial.tipAmount) : '',
   );
   const [payer, setPayer] = React.useState(
     initial?.paidByMemberId ?? members[0]?.id ?? '',
@@ -113,6 +118,7 @@ export function ExpenseForm({
     .reduce((s, m) => s + exactSubtotal(m.id), 0);
 
   const amountMinor = exactAuto ? exactSum : parseMoney(amount);
+  const tipMinor = fromFund ? 0 : parseMoney(tip) || 0;
 
   async function submit() {
     setError(null);
@@ -144,6 +150,7 @@ export function ExpenseForm({
       await onSubmit({
         description: description.trim(),
         amount: amountMinor,
+        tipAmount: tipMinor,
         category,
         paidByMemberId: payer,
         fromFund,
@@ -220,6 +227,24 @@ export function ExpenseForm({
             inputMode="decimal"
             placeholder="0.00"
           />
+        </div>
+      )}
+
+      {!fromFund && (
+        <div>
+          <Label>Чаевые ({trip.currency})</Label>
+          <Input
+            value={tip}
+            onChange={(e) => setTip(e.target.value)}
+            inputMode="decimal"
+            placeholder="0.00"
+          />
+          {tipMinor > 0 && (
+            <div className="mt-1.5 text-xs text-hint">
+              Итого с чаевыми: {formatMoney(amountMinor + tipMinor, trip.currency)}
+              {' · '}чаевые делятся поровну
+            </div>
+          )}
         </div>
       )}
 
