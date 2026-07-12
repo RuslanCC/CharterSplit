@@ -28,6 +28,7 @@ type State =
   | { phase: 'loading' }
   | { phase: 'no-telegram' }
   | { phase: 'error'; message: string }
+  | { phase: 'no-trip'; message: string }
   | { phase: 'ready'; trip: Trip; userId: string };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -62,6 +63,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       const message =
         e instanceof ApiError ? e.message : (e as Error).message;
+      // 409 — запуск без привязки к поездке (не через кнопку из группы).
+      // Не показываем это как ошибку и не создаём пустую поездку.
+      if (e instanceof ApiError && e.status === 409) {
+        setState({ phase: 'no-trip', message });
+        return;
+      }
       setState({ phase: 'error', message });
     }
   }, []);
@@ -89,6 +96,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       <CenterMessage
         title="Откройте в Telegram"
         subtitle="CharterSplit работает только как Telegram Mini App. Откройте приложение через бота."
+      />
+    );
+  }
+  if (state.phase === 'no-trip') {
+    return (
+      <CenterMessage
+        title="Откройте поездку из чата"
+        subtitle={state.message}
       />
     );
   }

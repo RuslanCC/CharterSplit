@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { MemberRole, Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
@@ -212,6 +217,18 @@ export class TripsService {
         : null;
 
     if (!trip) {
+      // Не создаём «сиротскую» поездку из запуска без стабильного ключа группы.
+      // startParam ("c<chatId>") приходит только с кнопки-ссылки из группового
+      // чата; telegramChatId — при запуске из самого чата. Запуск без них
+      // (web_app-кнопка из лички, Menu Button, голый URL приложения) не привязан
+      // ни к какой поездке, и chatInstance у него свой — иначе пользователь
+      // молча получал бы новую пустую поездку вместо общей.
+      const hasGroupKey = !!dto.startParam || dto.telegramChatId !== undefined;
+      if (!hasGroupKey) {
+        throw new ConflictException(
+          'Откройте приложение кнопкой «Открыть CharterSplit» из группового чата поездки.',
+        );
+      }
       trip = await this.prisma.$transaction(async (tx) => {
         const created = await tx.trip.create({
           data: {
