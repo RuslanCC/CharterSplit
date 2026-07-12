@@ -13,6 +13,31 @@ export interface TelegramThemeParams {
   destructive_text_color?: string;
 }
 
+export interface TelegramMainButton {
+  setText: (text: string) => void;
+  show: () => void;
+  hide: () => void;
+  enable: () => void;
+  disable: () => void;
+  showProgress: (leaveActive?: boolean) => void;
+  hideProgress: () => void;
+  onClick: (cb: () => void) => void;
+  offClick: (cb: () => void) => void;
+}
+
+export interface TelegramBackButton {
+  show: () => void;
+  hide: () => void;
+  onClick: (cb: () => void) => void;
+  offClick: (cb: () => void) => void;
+}
+
+export interface TelegramHapticFeedback {
+  impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
+  notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
+  selectionChanged: () => void;
+}
+
 export interface TelegramWebApp {
   initData: string;
   initDataUnsafe: any;
@@ -22,9 +47,10 @@ export interface TelegramWebApp {
   expand: () => void;
   onEvent: (event: string, cb: () => void) => void;
   offEvent: (event: string, cb: () => void) => void;
-  MainButton: any;
-  BackButton: any;
-  HapticFeedback?: { impactOccurred: (style: string) => void };
+  showConfirm?: (message: string, cb: (ok: boolean) => void) => void;
+  MainButton: TelegramMainButton;
+  BackButton: TelegramBackButton;
+  HapticFeedback?: TelegramHapticFeedback;
 }
 
 declare global {
@@ -41,6 +67,37 @@ export function getWebApp(): TelegramWebApp | null {
 /** Сырой initData для отправки на бэкенд (проверяется по HMAC). */
 export function getInitDataRaw(): string {
   return getWebApp()?.initData ?? '';
+}
+
+/**
+ * Подтверждение действия. В Telegram — нативный `showConfirm`, вне Telegram
+ * (или в старых клиентах без него) — браузерный `confirm` как fallback.
+ */
+export function confirmDialog(message: string): Promise<boolean> {
+  const wa = getWebApp();
+  if (wa?.showConfirm) {
+    return new Promise((resolve) => wa.showConfirm!(message, resolve));
+  }
+  return Promise.resolve(
+    typeof window !== 'undefined' ? window.confirm(message) : true,
+  );
+}
+
+/** Тактильный отклик (если поддерживается клиентом Telegram). */
+export function haptic(
+  kind: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error',
+): void {
+  const hf = getWebApp()?.HapticFeedback;
+  if (!hf) return;
+  try {
+    if (kind === 'success' || kind === 'warning' || kind === 'error') {
+      hf.notificationOccurred(kind);
+    } else {
+      hf.impactOccurred(kind);
+    }
+  } catch {
+    /* клиент без хаптика — молча игнорируем */
+  }
 }
 
 /** Переносит тему Telegram в CSS-переменные. */

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/page';
 
 export default function MembersPage() {
-  const { trip, reloadTrip } = useTrip();
+  const { trip, reloadTrip, isOwner } = useTrip();
   const [members, setMembers] = React.useState<Member[]>(trip.members);
   const [name, setName] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -51,12 +51,17 @@ export default function MembersPage() {
   }
 
   async function toggle(m: Member) {
-    if (m.isActive) {
-      await api.delete(`/trips/${trip.id}/members/${m.id}`);
-    } else {
-      await api.patch(`/trips/${trip.id}/members/${m.id}`, { isActive: true });
+    setError(null);
+    try {
+      if (m.isActive) {
+        await api.delete(`/trips/${trip.id}/members/${m.id}`);
+      } else {
+        await api.patch(`/trips/${trip.id}/members/${m.id}`, { isActive: true });
+      }
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
     }
-    await refresh();
   }
 
   function startEdit(m: Member) {
@@ -100,7 +105,7 @@ export default function MembersPage() {
           {members.map((m) => (
             <div
               key={m.id}
-              className="border-b border-black/[0.06] px-4 py-3 last:border-b-0"
+              className="border-b border-separator px-4 py-3 last:border-b-0"
             >
               <div className="flex items-center justify-between gap-2">
                 {editingId === m.id ? (
@@ -157,13 +162,21 @@ export default function MembersPage() {
                       >
                         <Pencil size={16} />
                       </button>
-                      <button
-                        onClick={() => toggle(m)}
-                        className="active:opacity-60"
-                        aria-label={m.isActive ? 'Деактивировать' : 'Активировать'}
-                      >
-                        {m.isActive ? <UserX size={18} /> : <UserCheck size={18} />}
-                      </button>
+                      {isOwner && (
+                        <button
+                          onClick={() => toggle(m)}
+                          className="active:opacity-60"
+                          aria-label={
+                            m.isActive ? 'Деактивировать' : 'Активировать'
+                          }
+                        >
+                          {m.isActive ? (
+                            <UserX size={18} />
+                          ) : (
+                            <UserCheck size={18} />
+                          )}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -174,7 +187,7 @@ export default function MembersPage() {
                   <select
                     value={m.coveredByMemberId ?? ''}
                     onChange={(e) => setCoveredBy(m, e.target.value || null)}
-                    className="min-w-0 flex-1 rounded-lg border border-black/10 bg-bg px-2 py-1 text-xs text-text outline-none"
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-2 py-1 text-xs text-text outline-none"
                   >
                     <option value="">— сам(а)</option>
                     {members

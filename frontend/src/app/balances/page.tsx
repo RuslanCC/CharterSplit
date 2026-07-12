@@ -6,6 +6,7 @@ import { useTrip } from '../providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { formatMoney, formatDate, parseMoney } from '@/lib/format';
+import { confirmDialog, haptic } from '@/lib/telegram';
 import type { Balances, Transfer, TripSummary } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,10 +34,11 @@ export default function BalancesPage() {
   const activeMembers = trip.members.filter((m) => m.isActive);
 
   async function settleTransfer(t: Transfer) {
+    if (busy) return;
     if (
-      !confirm(
+      !(await confirmDialog(
         `Отметить оплаченным: ${t.fromName} → ${t.toName} ${formatMoney(t.amount, trip.currency)}?`,
-      )
+      ))
     )
       return;
     setBusy(true);
@@ -46,6 +48,7 @@ export default function BalancesPage() {
         toMemberId: t.toMemberId,
         amount: t.amount,
       });
+      haptic('success');
       reload();
     } finally {
       setBusy(false);
@@ -53,10 +56,13 @@ export default function BalancesPage() {
   }
 
   async function removeSettlement(id: string) {
-    if (!confirm('Удалить погашение? Долг вернётся в расчёты.')) return;
+    if (busy) return;
+    if (!(await confirmDialog('Удалить погашение? Долг вернётся в расчёты.')))
+      return;
     setBusy(true);
     try {
       await api.delete(`/trips/${trip.id}/settlements/${id}`);
+      haptic('success');
       reload();
     } finally {
       setBusy(false);
@@ -89,8 +95,10 @@ export default function BalancesPage() {
       setFromMemberId('');
       setToMemberId('');
       setAmountInput('');
+      haptic('success');
       reload();
     } catch (e) {
+      haptic('error');
       setFormError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setBusy(false);
@@ -169,7 +177,7 @@ export default function BalancesPage() {
                   disabled={busy}
                   aria-label="Отметить оплаченным"
                   title="Отметить оплаченным"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 text-positive active:opacity-60 disabled:opacity-50"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-positive active:opacity-60 disabled:opacity-50"
                 >
                   <Check size={18} />
                 </button>

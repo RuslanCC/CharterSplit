@@ -16,7 +16,7 @@ const items = [
 export function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="sticky bottom-0 z-10 grid grid-cols-5 border-t border-black/10 bg-card pb-[env(safe-area-inset-bottom)]">
+    <nav className="sticky bottom-0 z-10 grid grid-cols-5 border-t border-line bg-card pb-[env(safe-area-inset-bottom)]">
       {items.map(({ href, label, icon: Icon }) => {
         const active =
           href === '/' ? pathname === '/' : pathname.startsWith(href);

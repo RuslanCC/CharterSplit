@@ -1,4 +1,5 @@
-import { IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { MAX_MINOR } from '../expenses/dto';
 
 export class CreateSettlementDto {
   @IsString()
@@ -9,6 +10,7 @@ export class CreateSettlementDto {
 
   @IsInt()
   @Min(1)
+  @Max(MAX_MINOR)
   amount!: number; // минорные единицы, положительное
 
   @IsOptional()

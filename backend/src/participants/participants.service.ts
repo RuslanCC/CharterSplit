@@ -78,7 +78,13 @@ export class ParticipantsService {
   }
 
   async update(tripId: string, memberId: string, user: User, dto: UpdateMemberDto) {
-    await this.access.assertMember(tripId, user);
+    // Смена активности/роли участника — trip-level, только владелец.
+    // Переименование и семейные связи может менять любой участник.
+    if (dto.isActive !== undefined || dto.role !== undefined) {
+      await this.access.assertOwner(tripId, user);
+    } else {
+      await this.access.assertMember(tripId, user);
+    }
     await this.access.assertMemberInTrip(tripId, memberId);
     if (
       dto.displayName === undefined &&
@@ -147,9 +153,9 @@ export class ParticipantsService {
     }
   }
 
-  /** Мягкое удаление: деактивация (история и доли сохраняются). */
+  /** Мягкое удаление: деактивация (история и доли сохраняются). Только владелец. */
   async deactivate(tripId: string, memberId: string, user: User) {
-    await this.access.assertMember(tripId, user);
+    await this.access.assertOwner(tripId, user);
     await this.access.assertMemberInTrip(tripId, memberId);
     return this.prisma.$transaction(async (tx) => {
       const member = await tx.tripMember.update({

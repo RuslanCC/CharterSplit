@@ -8,7 +8,7 @@ export const Input = React.forwardRef<
   <input
     ref={ref}
     className={cn(
-      'w-full rounded-xl bg-card px-4 py-2.5 text-[15px] text-text outline-none border border-black/10 placeholder:text-hint focus:border-link',
+      'w-full rounded-xl bg-card px-4 py-2.5 text-[15px] text-text outline-none border border-line placeholder:text-hint focus:border-link',
       className,
     )}
     {...props}
@@ -23,7 +23,7 @@ export const Select = React.forwardRef<
   <select
     ref={ref}
     className={cn(
-      'w-full rounded-xl bg-card px-4 py-2.5 text-[15px] text-text outline-none border border-black/10 focus:border-link appearance-none',
+      'w-full rounded-xl bg-card px-4 py-2.5 text-[15px] text-text outline-none border border-line focus:border-link appearance-none',
       className,
     )}
     {...props}

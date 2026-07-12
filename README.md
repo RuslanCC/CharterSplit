@@ -83,6 +83,11 @@ docker exec aisecretary-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 ### 5. Настройка бота
 - В @BotFather задайте URL Mini App = `https://vps.ruslan.cc/chartersplit`
   (`/newapp` или кнопка меню `/setmenubutton`).
+- **Отключите privacy mode** (`/setprivacy` → **Disable**) — иначе бот не видит
+  обычные сообщения в группе и участники не будут добавляться в поездку
+  автоматически «по факту переписки» (сработает только заход в приложение и
+  события вступления/выхода). Альтернатива — выдать боту права администратора
+  в группе.
 - Webhook регистрируется автоматически при старте backend на
   `https://vps.ruslan.cc/chartersplit/api/telegram/webhook/<TELEGRAM_WEBHOOK_SECRET>`.
   Ручной вариant:

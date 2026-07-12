@@ -345,7 +345,8 @@ export class TripsService {
   }
 
   async update(id: string, user: User, dto: UpdateTripDto) {
-    await this.access.assertMember(id, user);
+    // Trip-level (название/валюта) меняет только владелец.
+    await this.access.assertOwner(id, user);
     if (dto.title === undefined && dto.currency === undefined) {
       throw new BadRequestException('nothing to update');
     }

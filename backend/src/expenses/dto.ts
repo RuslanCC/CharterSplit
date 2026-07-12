@@ -9,10 +9,16 @@ import {
   IsOptional,
   IsString,
   Length,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { SplitType } from '@prisma/client';
+
+// Суммы хранятся в 32-битном Int (макс 2 147 483 647 минорных единиц).
+// Держим потолок с запасом, чтобы вместо переполнения БД прилетала 400.
+export const MAX_MINOR = 2_000_000_000;
+const MAX_SHARE_UNITS = 1_000_000;
 
 export class ExpenseParticipantDto {
   @IsString()
@@ -21,11 +27,13 @@ export class ExpenseParticipantDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(MAX_SHARE_UNITS)
   shareUnits?: number; // для SHARES
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_MINOR)
   amount?: number; // для EXACT (минорные единицы)
 }
 
@@ -36,6 +44,7 @@ export class CreateExpenseDto {
 
   @IsInt()
   @Min(1)
+  @Max(MAX_MINOR)
   amount!: number; // минорные единицы
 
   @IsOptional()
@@ -57,6 +66,7 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_MINOR)
   tipAmount?: number; // чаевые (минорные единицы), делятся поровну между участниками
 
   @IsEnum(SplitType)
@@ -78,6 +88,7 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(MAX_MINOR)
   amount?: number;
 
   @IsOptional()
@@ -100,6 +111,7 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_MINOR)
   tipAmount?: number; // чаевые (минорные единицы), делятся поровну между участниками
 
   @IsOptional()

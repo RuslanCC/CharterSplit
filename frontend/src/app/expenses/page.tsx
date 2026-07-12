@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
+import { confirmDialog, haptic } from '@/lib/telegram';
 import {
   formatMoney,
   formatDayLabel,
@@ -23,6 +24,8 @@ export default function ExpensesPage() {
     () => api.get(`/trips/${trip.id}/expenses`),
     [trip.id],
   );
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Список уже отсортирован по spentAt desc — сворачиваем в группы по дням.
   const dayGroups = useMemo(() => {
@@ -48,9 +51,20 @@ export default function ExpensesPage() {
   }, [data]);
 
   async function remove(id: string) {
-    if (!confirm('Удалить расход?')) return;
-    await api.delete(`/trips/${trip.id}/expenses/${id}`);
-    reload();
+    if (busyId) return;
+    if (!(await confirmDialog('Удалить расход?'))) return;
+    setActionError(null);
+    setBusyId(id);
+    try {
+      await api.delete(`/trips/${trip.id}/expenses/${id}`);
+      haptic('success');
+      reload();
+    } catch (e) {
+      haptic('error');
+      setActionError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -66,6 +80,9 @@ export default function ExpensesPage() {
       <div className="px-4 pb-4">
         {loading && <Loading />}
         {error && <ErrorState message={error} />}
+        {actionError && (
+          <div className="mb-2 text-sm text-destructive">{actionError}</div>
+        )}
         {data && data.length === 0 && (
           <EmptyState>Пока нет расходов. Добавьте первый.</EmptyState>
         )}
@@ -101,12 +118,15 @@ export default function ExpensesPage() {
                     <Link
                       href={`/expenses/${e.id}/edit`}
                       className="text-hint active:text-link"
+                      aria-label="Редактировать расход"
                     >
                       <Pencil size={16} />
                     </Link>
                     <button
                       onClick={() => remove(e.id)}
-                      className="text-hint active:text-destructive"
+                      disabled={busyId === e.id}
+                      aria-label="Удалить расход"
+                      className="text-hint active:text-destructive disabled:opacity-40"
                     >
                       <Trash2 size={16} />
                     </button>

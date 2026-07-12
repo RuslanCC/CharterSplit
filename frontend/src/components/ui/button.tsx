@@ -11,7 +11,7 @@ export interface ButtonProps
 
 const variants: Record<Variant, string> = {
   primary: 'bg-primary text-primary-foreground active:opacity-80',
-  secondary: 'bg-card text-text border border-black/10 active:opacity-80',
+  secondary: 'bg-card text-text border border-line active:opacity-80',
   ghost: 'bg-transparent text-link active:opacity-60',
   destructive: 'bg-destructive text-white active:opacity-80',
 };

@@ -20,7 +20,7 @@ export function CardRow({
   return (
     <div
       className={cn(
-        'flex items-center justify-between px-4 py-3 border-b border-black/[0.06] last:border-b-0',
+        'flex items-center justify-between px-4 py-3 border-b border-separator last:border-b-0',
         className,
       )}
       {...props}

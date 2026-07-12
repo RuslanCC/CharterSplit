@@ -24,7 +24,8 @@ export class SettingsService {
   }
 
   async update(tripId: string, user: User, dto: UpdateSettingsDto) {
-    await this.access.assertMember(tripId, user);
+    // Настройки поездки меняет только владелец.
+    await this.access.assertOwner(tripId, user);
     return this.prisma.$transaction(async (tx) => {
       const settings = await tx.tripSettings.upsert({
         where: { tripId },

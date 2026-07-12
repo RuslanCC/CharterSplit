@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { TripMember, User } from '@prisma/client';
+import { MemberRole, type TripMember, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Проверки доступа: пользователь работает только с поездками, где он участник. */
@@ -16,6 +16,19 @@ export class AccessService {
       where: { tripId, userId: user.id },
     });
     if (!member) throw new ForbiddenException('not a member of this trip');
+    return member;
+  }
+
+  /**
+   * Гарантирует, что пользователь — владелец поездки (OWNER). Для trip-level
+   * операций: смена валюты/настроек, деактивация участников. Расходы, кассу и
+   * взаиморасчёты может вести любой участник.
+   */
+  async assertOwner(tripId: string, user: User): Promise<TripMember> {
+    const member = await this.assertMember(tripId, user);
+    if (member.role !== MemberRole.OWNER) {
+      throw new ForbiddenException('only the trip owner can do this');
+    }
     return member;
   }
 

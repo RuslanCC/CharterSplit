@@ -8,7 +8,7 @@ import { SpendingChart } from '@/components/spending-chart';
 import { useTrip } from './providers';
 import { api } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
-import { formatMoney } from '@/lib/format';
+import { formatMoney, plural } from '@/lib/format';
 import type { Balances, Expense } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { PageHeader, Loading, ErrorState } from '@/components/page';
@@ -114,7 +114,12 @@ export default function OverviewPage() {
             <CardRow>
               <div className="flex items-center gap-3">
                 <Users size={20} className="text-hint" />
-                <span>{trip.members.filter((m) => m.isActive).length} участников</span>
+                <span>
+                  {(() => {
+                    const n = trip.members.filter((m) => m.isActive).length;
+                    return `${n} ${plural(n, ['участник', 'участника', 'участников'])}`;
+                  })()}
+                </span>
               </div>
               <ChevronRight size={18} className="text-hint" />
             </CardRow>

@@ -25,6 +25,11 @@
   --color-primary-foreground: var(--tg-button-text);
   --color-destructive: var(--tg-destructive);
   --color-positive: var(--tg-positive);
+  /* Границы завязаны на цвет текста темы, чтобы оставаться видимыми и в
+     тёмной теме Telegram (где захардкоженный border-black сливается с фоном).
+     line — рамки полей/кнопок/навигации; separator — разделители строк. */
+  --color-line: color-mix(in srgb, var(--tg-text) 14%, transparent);
+  --color-separator: color-mix(in srgb, var(--tg-text) 8%, transparent);
   --radius-xl: 14px;
 }
 

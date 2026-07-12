@@ -11,9 +11,10 @@ import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { Input, Label, Select } from '@/components/ui/input';
 import { PageHeader } from '@/components/page';
 import { SPLIT_LABELS } from '@/lib/format';
+import { haptic } from '@/lib/telegram';
 
 export default function SettingsPage() {
-  const { trip, reloadTrip } = useTrip();
+  const { trip, reloadTrip, isOwner } = useTrip();
   const [title, setTitle] = React.useState(trip.title);
   const [currency, setCurrency] = React.useState(trip.currency);
   const [defaultSplit, setDefaultSplit] = React.useState<SplitType>(
@@ -58,8 +59,10 @@ export default function SettingsPage() {
         notifyChat,
       });
       await reloadTrip();
+      haptic('success');
       setMsg('Сохранено');
     } catch (e) {
+      haptic('error');
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
       setSaving(false);
@@ -70,17 +73,27 @@ export default function SettingsPage() {
     <div>
       <PageHeader title="Настройки" />
       <div className="px-4 pb-8">
+        {!isOwner && (
+          <div className="mt-2 rounded-xl bg-card px-4 py-3 text-sm text-hint">
+            Настройки поездки может менять только владелец. Экспорт доступен всем.
+          </div>
+        )}
         <SectionTitle>Поездка</SectionTitle>
         <div className="space-y-3">
           <div>
             <Label>Название</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={!isOwner}
+            />
           </div>
           <div>
             <Label>Валюта</Label>
             <Select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
+              disabled={!isOwner}
             >
               {['RUB', 'USD', 'EUR', 'GBP', 'TRY', 'THB'].map((c) => (
                 <option key={c} value={c}>
@@ -88,6 +101,12 @@ export default function SettingsPage() {
                 </option>
               ))}
             </Select>
+            {currency !== trip.currency && (
+              <div className="mt-1.5 text-xs text-destructive">
+                Суммы уже внесённых расходов не пересчитываются — сменится
+                только символ валюты.
+              </div>
+            )}
           </div>
         </div>
 
@@ -98,6 +117,7 @@ export default function SettingsPage() {
             <Select
               value={defaultSplit}
               onChange={(e) => setDefaultSplit(e.target.value as SplitType)}
+              disabled={!isOwner}
             >
               {(['EQUAL', 'SHARES', 'EXACT'] as SplitType[]).map((t) => (
                 <option key={t} value={t}>
@@ -112,6 +132,7 @@ export default function SettingsPage() {
               type="checkbox"
               checked={allowGuests}
               onChange={(e) => setAllowGuests(e.target.checked)}
+              disabled={!isOwner}
               className="h-5 w-5"
             />
           </label>
@@ -121,6 +142,7 @@ export default function SettingsPage() {
               type="checkbox"
               checked={notifyChat}
               onChange={(e) => setNotifyChat(e.target.checked)}
+              disabled={!isOwner}
               className="h-5 w-5"
             />
           </label>
@@ -152,9 +174,11 @@ export default function SettingsPage() {
         {error && <div className="mt-3 text-sm text-destructive">{error}</div>}
         {msg && <div className="mt-3 text-sm text-positive">{msg}</div>}
 
-        <Button block className="mt-4" onClick={save} disabled={saving}>
-          {saving ? 'Сохранение…' : 'Сохранить'}
-        </Button>
+        {isOwner && (
+          <Button block className="mt-4" onClick={save} disabled={saving}>
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </Button>
+        )}
       </div>
     </div>
   );

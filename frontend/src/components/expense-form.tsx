@@ -6,6 +6,8 @@ import { useTrip } from '@/app/providers';
 import { ApiError } from '@/lib/api';
 import { parseMoney, formatMoney, moneyToInput, SPLIT_LABELS } from '@/lib/format';
 import type { Expense, SplitType } from '@/lib/types';
+import { useIsTelegram, useMainButton } from '@/lib/hooks';
+import { haptic } from '@/lib/telegram';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input, Label, Select } from '@/components/ui/input';
@@ -110,6 +112,7 @@ export function ExpenseForm({
   );
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const inTelegram = useIsTelegram();
 
   const exactAuto = splitType === 'EXACT' && !fromFund;
 
@@ -131,6 +134,7 @@ export function ExpenseForm({
     if (!Number.isFinite(amountMinor) || amountMinor <= 0)
       return setError(exactAuto ? 'Введите суммы участников' : 'Введите сумму');
     if (!payer) return setError('Выберите плательщика');
+    if (saving) return;
 
     const chosen = members.filter((m) => selected[m.id]);
     let participants: ExpensePayload['participants'];
@@ -162,11 +166,23 @@ export function ExpenseForm({
         splitType,
         participants,
       });
+      haptic('success');
     } catch (e) {
+      haptic('error');
       setError(e instanceof ApiError ? e.message : (e as Error).message);
       setSaving(false);
     }
   }
+
+  // Первичное действие — нативная MainButton Telegram (закреплена внизу экрана,
+  // видна без прокрутки длинной формы). Вне Telegram показываем обычную кнопку.
+  useMainButton({
+    text: saving ? 'Сохранение…' : submitLabel,
+    onClick: submit,
+    loading: saving,
+    disabled: saving,
+    visible: inTelegram,
+  });
 
   return (
     <div className="space-y-4 px-4 pb-8">
@@ -182,7 +198,7 @@ export function ExpenseForm({
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium',
                 category === label
                   ? 'border-transparent bg-primary text-primary-foreground'
-                  : 'border-black/10 bg-card text-text',
+                  : 'border-line bg-card text-text',
               )}
             >
               <Icon size={14} />
@@ -196,7 +212,7 @@ export function ExpenseForm({
               'inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium',
               category === null
                 ? 'border-transparent bg-primary text-primary-foreground'
-                : 'border-black/10 bg-card text-hint',
+                : 'border-line bg-card text-hint',
             )}
           >
             Без категории
@@ -288,7 +304,7 @@ export function ExpenseForm({
                     'rounded-xl py-2 text-sm font-medium',
                     splitType === t
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-card text-text border border-black/10',
+                      : 'bg-card text-text border border-line',
                   )}
                 >
                   {SPLIT_LABELS[t]}
@@ -304,7 +320,7 @@ export function ExpenseForm({
                 <div
                   key={m.id}
                   className={cn(
-                    'flex items-start justify-between border-b border-black/[0.06] px-4 py-2.5 last:border-b-0',
+                    'flex items-start justify-between border-b border-separator px-4 py-2.5 last:border-b-0',
                     !m.isActive && 'opacity-50',
                   )}
                 >
@@ -329,7 +345,7 @@ export function ExpenseForm({
                         setUnits((u) => ({ ...u, [m.id]: e.target.value }))
                       }
                       inputMode="numeric"
-                      className="w-16 rounded-lg border border-black/10 bg-bg px-2 py-1 text-center text-sm"
+                      className="w-16 rounded-lg border border-line bg-bg px-2 py-1 text-center text-sm"
                     />
                   )}
                   {selected[m.id] && splitType === 'EXACT' && (
@@ -348,7 +364,7 @@ export function ExpenseForm({
                             }
                             inputMode="decimal"
                             placeholder="0.00"
-                            className="w-24 rounded-lg border border-black/10 bg-bg px-2 py-1 text-right text-sm"
+                            className="w-24 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm"
                           />
                         ),
                       )}
@@ -384,9 +400,11 @@ export function ExpenseForm({
 
       {error && <div className="text-sm text-destructive">{error}</div>}
 
-      <Button block onClick={submit} disabled={saving}>
-        {saving ? 'Сохранение…' : submitLabel}
-      </Button>
+      {!inTelegram && (
+        <Button block onClick={submit} disabled={saving}>
+          {saving ? 'Сохранение…' : submitLabel}
+        </Button>
+      )}
     </div>
   );
 }

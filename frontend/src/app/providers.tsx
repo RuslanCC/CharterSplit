@@ -1,18 +1,22 @@
 'use client';
 
 import * as React from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import {
   applyTelegramTheme,
   getWebApp,
   getInitDataRaw,
 } from '@/lib/telegram';
+import { useBackButton } from '@/lib/hooks';
 import { BottomNav } from '@/components/nav';
 import type { Session, Trip } from '@/lib/types';
 
 interface TripContextValue {
   trip: Trip;
   userId: string;
+  /** Текущий пользователь — владелец поездки (может менять trip-level настройки). */
+  isOwner: boolean;
   reloadTrip: () => Promise<void>;
 }
 
@@ -113,16 +117,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isOwner =
+    state.trip.members.find((m) => m.userId === state.userId)?.role === 'OWNER';
+
   return (
     <TripCtx.Provider
-      value={{ trip: state.trip, userId: state.userId, reloadTrip }}
+      value={{ trip: state.trip, userId: state.userId, isOwner, reloadTrip }}
     >
+      <BackButtonManager />
       <div className="mx-auto flex min-h-screen max-w-lg flex-col">
         <main className="flex-1 pb-4">{children}</main>
         <BottomNav />
       </div>
     </TripCtx.Provider>
   );
+}
+
+/**
+ * Нативная кнопка «назад» Telegram на всех экранах, кроме корневого «Обзора»
+ * (там нижняя навигация — точка входа, а системная «назад» закрыла бы приложение).
+ */
+function BackButtonManager() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const isRoot = pathname === '/';
+  useBackButton(() => router.back());
+
+  React.useEffect(() => {
+    const bb = getWebApp()?.BackButton;
+    if (!bb) return;
+    if (isRoot) bb.hide();
+    else bb.show();
+  }, [isRoot]);
+
+  return null;
 }
 
 function CenterMessage({
