@@ -107,6 +107,14 @@ export class BotService implements OnModuleInit {
     );
   }
 
+  /** Кнопка «открыть Mini App» для сообщений в групповом чате. */
+  private openAppKeyboard(chatId: number): InlineKeyboard {
+    return new InlineKeyboard().url(
+      '🧾 Открыть CharterSplit',
+      this.miniAppLink(chatId),
+    );
+  }
+
   private registerHandlers(bot: Bot): void {
     bot.command('start', async (ctx) => {
       if (ctx.chat.type === 'private') {
@@ -614,6 +622,61 @@ export class BotService implements OnModuleInit {
       this.logger.error(
         `sendToChat failed for chat ${telegramChatId}: ${(e as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Отправляет карточку расхода с кнопкой Mini App. Возвращает message_id
+   * отправленного сообщения (для последующего редактирования) или null при сбое.
+   */
+  async sendExpenseCard(
+    telegramChatId: bigint,
+    text: string,
+  ): Promise<number | null> {
+    if (!this.bot || !this.ready) {
+      this.logger.warn('sendExpenseCard skipped: bot is not ready');
+      return null;
+    }
+    const chatId = Number(telegramChatId);
+    try {
+      const msg = await this.bot.api.sendMessage(chatId, text, {
+        parse_mode: 'HTML',
+        reply_markup: this.openAppKeyboard(chatId),
+      });
+      return msg.message_id;
+    } catch (e) {
+      this.logger.error(
+        `sendExpenseCard failed for chat ${chatId}: ${(e as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Редактирует ранее отправленную карточку расхода на месте.
+   * Возвращает true при успехе (или если текст не изменился), false — если
+   * сообщение недоступно для правки (удалено/слишком старое) и требуется переотправка.
+   */
+  async editExpenseCard(
+    telegramChatId: bigint,
+    messageId: number,
+    text: string,
+  ): Promise<boolean> {
+    if (!this.bot || !this.ready) return false;
+    const chatId = Number(telegramChatId);
+    try {
+      await this.bot.api.editMessageText(chatId, messageId, text, {
+        parse_mode: 'HTML',
+        reply_markup: this.openAppKeyboard(chatId),
+      });
+      return true;
+    } catch (e) {
+      const desc = (e as { description?: string }).description ?? '';
+      if (desc.includes('message is not modified')) return true;
+      this.logger.error(
+        `editExpenseCard failed for chat ${chatId} msg ${messageId}: ${(e as Error).message}`,
+      );
+      return false;
     }
   }
 

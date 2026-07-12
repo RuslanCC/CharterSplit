@@ -107,6 +107,9 @@ model Expense {
   // хранятся без них — чаевые распределяются на этапе расчёта балансов/экспорта.
   tipAmount      Int        @default(0)
   splitType      SplitType  @default(EQUAL)
+  // id сообщения-карточки расхода в групповом чате: бот редактирует его на месте
+  // при изменении расхода. null → карточка не отправлялась (уведомления были выключены).
+  chatMessageId  BigInt?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

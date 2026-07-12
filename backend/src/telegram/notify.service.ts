@@ -3,6 +3,7 @@ import type { SplitType, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BotService } from './bot.service';
 import { displayNameOf, formatMoney, escapeHtml } from '../common/format';
+import { computeTipShares } from '../common/money';
 
 const SPLIT_NOTE: Record<SplitType, string> = {
   EQUAL: 'поровну',
@@ -23,37 +24,133 @@ export class NotifyService {
     private readonly bot: BotService,
   ) {}
 
+  /**
+   * Отправляет карточку нового расхода в чат и запоминает id сообщения,
+   * чтобы при изменении расхода отредактировать его на месте.
+   */
   async expenseCreated(
     tripId: string,
     actor: User,
-    e: {
-      description: string;
-      amount: number;
-      fromFund: boolean;
-      splitType: SplitType;
-      participantCount: number;
-    },
+    expenseId: string,
   ): Promise<void> {
     try {
       const trip = await this.notifiableTrip(tripId);
       if (!trip) return;
-      const money = formatMoney(e.amount, trip.currency);
-      const how = e.fromFund
-        ? 'оплачено из кассы'
-        : e.splitType === 'EQUAL'
-          ? `делится поровну на ${e.participantCount}`
-          : `делится ${SPLIT_NOTE[e.splitType]}`;
-      await this.bot.sendToChat(
-        trip.telegramChatId!,
-        [
-          `💸 <b>${escapeHtml(e.description)}</b> — <b>${money}</b>`,
-          `Добавил ${escapeHtml(await this.actorName(tripId, actor))} · ${how}`,
-        ].join('\n'),
-        true,
-      );
+      const card = await this.renderExpenseCard(tripId, expenseId, actor, trip.currency);
+      if (!card) return;
+      const messageId = await this.bot.sendExpenseCard(trip.telegramChatId!, card);
+      if (messageId != null) {
+        await this.prisma.expense.update({
+          where: { id: expenseId },
+          data: { chatMessageId: BigInt(messageId) },
+        });
+      }
     } catch (err) {
       this.logger.error(`expenseCreated notify failed: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Обновляет карточку расхода в чате после его изменения: правит ранее
+   * отправленное сообщение на месте. Если карточки ещё не было (уведомления были
+   * выключены) или её удалили — отправляет новую и запоминает её id.
+   */
+  async expenseUpdated(
+    tripId: string,
+    actor: User,
+    expenseId: string,
+  ): Promise<void> {
+    try {
+      const trip = await this.notifiableTrip(tripId);
+      if (!trip) return;
+      const expense = await this.prisma.expense.findFirst({
+        where: { id: expenseId, tripId },
+        select: { chatMessageId: true },
+      });
+      if (!expense) return;
+      const card = await this.renderExpenseCard(tripId, expenseId, actor, trip.currency);
+      if (!card) return;
+
+      if (expense.chatMessageId != null) {
+        const ok = await this.bot.editExpenseCard(
+          trip.telegramChatId!,
+          Number(expense.chatMessageId),
+          card,
+        );
+        if (ok) return;
+      }
+      // Карточки не было или её нельзя отредактировать — отправляем новую.
+      const messageId = await this.bot.sendExpenseCard(trip.telegramChatId!, card);
+      if (messageId != null) {
+        await this.prisma.expense.update({
+          where: { id: expenseId },
+          data: { chatMessageId: BigInt(messageId) },
+        });
+      }
+    } catch (err) {
+      this.logger.error(`expenseUpdated notify failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Собирает HTML-текст карточки расхода: сумма, кто оплатил, способ деления
+   * и подробная раскладка «кто сколько должен» (с учётом чаевых).
+   * Возвращает null, если расход не найден.
+   */
+  private async renderExpenseCard(
+    tripId: string,
+    expenseId: string,
+    actor: User,
+    currency: string,
+  ): Promise<string | null> {
+    const expense = await this.prisma.expense.findFirst({
+      where: { id: expenseId, tripId },
+      include: {
+        paidByMember: { select: { displayName: true } },
+        shares: { include: { member: { select: { displayName: true } } } },
+      },
+    });
+    if (!expense) return null;
+
+    const fmt = (minor: number) => formatMoney(minor, currency);
+    const payerName = escapeHtml(expense.paidByMember.displayName);
+    const lines: string[] = [
+      `💸 <b>${escapeHtml(expense.description)}</b> — <b>${fmt(expense.amount)}</b>`,
+    ];
+
+    if (expense.fromFund) {
+      lines.push(`Оплатил ${payerName} · оплачено из кассы`);
+      lines.push(`Добавил ${escapeHtml(await this.actorName(tripId, actor))}`);
+      return lines.join('\n');
+    }
+
+    const how =
+      expense.splitType === 'EQUAL'
+        ? `делится поровну на ${expense.shares.length}`
+        : `делится ${SPLIT_NOTE[expense.splitType]}`;
+    lines.push(`Оплатил ${payerName} · ${how}`);
+
+    // Итоговый долг каждого = его доля + равная доля чаевых.
+    const tipShares = computeTipShares(
+      expense.tipAmount,
+      expense.shares.map((s) => s.memberId),
+    );
+    const rows = expense.shares
+      .map((s) => ({
+        name: s.member.displayName,
+        owed: s.amount + (tipShares[s.memberId] ?? 0),
+      }))
+      .sort((a, b) => b.owed - a.owed || a.name.localeCompare(b.name, 'ru'));
+
+    lines.push('', '<b>Кто сколько должен:</b>');
+    for (const r of rows) {
+      lines.push(`• ${escapeHtml(r.name)} — ${fmt(r.owed)}`);
+    }
+    if (expense.tipAmount > 0) {
+      lines.push(`<i>вкл. чаевые ${fmt(expense.tipAmount)} поровну</i>`);
+    }
+    lines.push('', `<i>Добавил ${escapeHtml(await this.actorName(tripId, actor))}</i>`);
+    return lines.join('\n');
   }
 
   async expenseDeleted(

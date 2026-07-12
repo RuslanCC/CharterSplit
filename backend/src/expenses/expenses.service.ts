@@ -94,13 +94,7 @@ export class ExpensesService {
     });
 
     // Fire-and-forget: сбой Telegram не влияет на ответ API.
-    void this.notify.expenseCreated(tripId, user, {
-      description: expense.description,
-      amount: expense.amount,
-      fromFund: expense.fromFund,
-      splitType: expense.splitType,
-      participantCount: expense.shares.length,
-    });
+    void this.notify.expenseCreated(tripId, user, expense.id);
     void this.notify.balanceChanged(tripId);
 
     return expense;
@@ -177,6 +171,8 @@ export class ExpensesService {
       return expense;
     });
 
+    // Обновляем карточку расхода в чате на месте и пересчитываем табло балансов.
+    void this.notify.expenseUpdated(tripId, user, updated.id);
     void this.notify.balanceChanged(tripId);
 
     return updated;
