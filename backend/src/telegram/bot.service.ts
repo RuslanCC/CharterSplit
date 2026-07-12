@@ -91,18 +91,34 @@ export class BotService implements OnModuleInit {
     return `https://t.me/${this.bot!.botInfo.username}?startapp=c${chatId}`;
   }
 
-  private registerHandlers(bot: Bot): void {
-    const appUrl = this.publicUrl;
+  /**
+   * Диплинк «добавить бота в группу» — открывает в Telegram выбор группы.
+   * Приложение привязано к групповому чату, поэтому в личке это главный CTA.
+   */
+  private addToGroupLink(): string {
+    return `https://t.me/${this.bot!.botInfo.username}?startgroup=true`;
+  }
 
+  /** Кнопка для лички: добавить бота в группу поездки. */
+  private addToGroupKeyboard(): InlineKeyboard {
+    return new InlineKeyboard().url(
+      '➕ Добавить в группу поездки',
+      this.addToGroupLink(),
+    );
+  }
+
+  private registerHandlers(bot: Bot): void {
     bot.command('start', async (ctx) => {
       if (ctx.chat.type === 'private') {
-        const keyboard = appUrl
-          ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
-          : undefined;
         await ctx.reply(
-          'CharterSplit — деление общих расходов в поездке.\n' +
-            'Откройте приложение, чтобы вести расходы, судовую кассу и взаиморасчёты.',
-          keyboard ? { reply_markup: keyboard } : undefined,
+          '⛵️ CharterSplit — деление общих расходов в поездке.\n\n' +
+            'Приложение работает в групповом чате поездки, а не в личке.\n\n' +
+            'Как начать:\n' +
+            '1️⃣ Добавьте меня в группу вашей поездки — кнопкой ниже.\n' +
+            '2️⃣ В группе я пришлю кнопку «🧾 Открыть CharterSplit» — открывайте приложение через неё.\n' +
+            '3️⃣ Все, кто пишет в чат или открывает приложение, попадают в эту поездку автоматически.\n\n' +
+            '❓ По всем вопросам пишите @RuslanCC',
+          { reply_markup: this.addToGroupKeyboard() },
         );
         return;
       }
@@ -118,13 +134,10 @@ export class BotService implements OnModuleInit {
         await this.sendBalanceMessage(ctx.chat.id, ctx.chat.title);
         return;
       }
-      const keyboard = appUrl
-        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
-        : undefined;
       await ctx.reply(
         'Команда /balance работает в групповом чате поездки. ' +
-          'Здесь откройте приложение, чтобы посмотреть балансы.',
-        keyboard ? { reply_markup: keyboard } : undefined,
+          'Добавьте меня в группу и откройте приложение кнопкой оттуда.',
+        { reply_markup: this.addToGroupKeyboard() },
       );
     });
 
@@ -146,13 +159,10 @@ export class BotService implements OnModuleInit {
         await this.sendSummaryMessage(ctx.chat.id, ctx.chat.title);
         return;
       }
-      const keyboard = appUrl
-        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
-        : undefined;
       await ctx.reply(
         'Команда /summary работает в групповом чате поездки. ' +
-          'Здесь откройте приложение, чтобы посмотреть итоги.',
-        keyboard ? { reply_markup: keyboard } : undefined,
+          'Добавьте меня в группу и откройте приложение кнопкой оттуда.',
+        { reply_markup: this.addToGroupKeyboard() },
       );
     });
 
@@ -162,12 +172,10 @@ export class BotService implements OnModuleInit {
         await this.sendExportDocument(ctx.chat.id, ctx.chat.title);
         return;
       }
-      const keyboard = appUrl
-        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', appUrl)
-        : undefined;
       await ctx.reply(
-        'Команда /export работает в групповом чате поездки — файл придёт сюда же.',
-        keyboard ? { reply_markup: keyboard } : undefined,
+        'Команда /export работает в групповом чате поездки — файл придёт туда же. ' +
+          'Добавьте меня в группу поездки.',
+        { reply_markup: this.addToGroupKeyboard() },
       );
     });
 
@@ -225,8 +233,13 @@ export class BotService implements OnModuleInit {
     });
 
     bot.on('message', async (ctx) => {
-      if (appUrl && ctx.chat?.type === 'private') {
-        await ctx.reply('Откройте приложение через кнопку меню или команду /start.');
+      if (ctx.chat?.type === 'private') {
+        await ctx.reply(
+          'CharterSplit работает в групповом чате поездки. ' +
+            'Добавьте меня в группу и открывайте приложение кнопкой оттуда — ' +
+            'подробнее в /start.',
+          { reply_markup: this.addToGroupKeyboard() },
+        );
         return;
       }
       // Пассивный сбор участников: автор сообщения в группе попадает в поездку.
@@ -313,14 +326,17 @@ export class BotService implements OnModuleInit {
       '• /export — выгрузка расходов в CSV',
       '• /help или #справка — эта справка',
       '',
-      'Приложение открывается кнопкой «🧾 Открыть CharterSplit».',
+      chatType === 'private'
+        ? 'Приложение работает в групповом чате поездки. Добавьте меня в группу — ' +
+          'там появится кнопка «🧾 Открыть CharterSplit».'
+        : 'Приложение открывается кнопкой «🧾 Открыть CharterSplit».',
       '',
       '❓ По всем вопросам пишите @RuslanCC',
     ];
 
     const keyboard =
-      this.publicUrl && chatType === 'private'
-        ? new InlineKeyboard().webApp('🧾 Открыть CharterSplit', this.publicUrl)
+      chatType === 'private'
+        ? this.addToGroupKeyboard()
         : chatType === 'group' || chatType === 'supergroup'
           ? new InlineKeyboard().url(
               '🧾 Открыть CharterSplit',
