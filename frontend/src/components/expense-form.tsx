@@ -41,7 +41,7 @@ export function ExpenseForm({
   submitLabel = 'Сохранить расход',
   onSubmit,
 }: ExpenseFormProps) {
-  const { trip } = useTrip();
+  const { trip, userId } = useTrip();
   // Неактивные участники показываются, если на них ссылается редактируемый расход.
   const referenced = new Set(
     initial ? [initial.paidByMemberId, ...initial.shares.map((s) => s.memberId)] : [],
@@ -72,8 +72,13 @@ export function ExpenseForm({
   const [tip, setTip] = React.useState(
     initial ? moneyToInput(initial.tipAmount) : '',
   );
+  // При создании плательщик по умолчанию — сам добавляющий (его участник),
+  // а не первый по joinedAt (обычно владелец). При правке — как в расходе.
   const [payer, setPayer] = React.useState(
-    initial?.paidByMemberId ?? members[0]?.id ?? '',
+    initial?.paidByMemberId ??
+      members.find((m) => m.userId === userId)?.id ??
+      members[0]?.id ??
+      '',
   );
   const [fromFund, setFromFund] = React.useState(initial?.fromFund ?? false);
   const [splitType, setSplitType] = React.useState<SplitType>(
