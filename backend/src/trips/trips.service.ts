@@ -58,6 +58,155 @@ export class TripsService {
   }
 
   /**
+   * Telegram превратил группу в супергруппу (смена видимости истории, публичная
+   * ссылка, >200 участников…) — у чата новый chat_id. Переносим поездку на новый
+   * id; если бот уже успел завести под новым id пустую поездку-дубль, вливаем её
+   * в исходную. Идемпотентно: повторный вызов (оба сервисных сообщения) — no-op.
+   */
+  async migrateGroupChat(fromChatId: number, toChatId: number): Promise<void> {
+    const from = BigInt(fromChatId);
+    const to = BigInt(toChatId);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          const source = await tx.trip.findUnique({
+            where: { telegramChatId: from },
+          });
+          if (!source) return; // уже перенесено или бота не было в группе
+          const dup = await tx.trip.findUnique({ where: { telegramChatId: to } });
+          if (dup) await this.mergeTripInto(tx, dup.id, source.id);
+          await tx.trip.update({
+            where: { id: source.id },
+            data: {
+              telegramChatId: to,
+              migratedFromChatId: from,
+              startParam: `c${toChatId}`,
+              // id сообщений старой группы в супергруппе недействительны.
+              pinnedMessageId: null,
+            },
+          });
+          await tx.expense.updateMany({
+            where: { tripId: source.id },
+            data: { chatMessageId: null },
+          });
+          await this.history.record(
+            {
+              tripId: source.id,
+              action: HistoryAction.TRIP_UPDATED,
+              entityType: 'Trip',
+              entityId: source.id,
+              payload: {
+                chatMigrated: true,
+                fromChatId: String(from),
+                toChatId: String(to),
+                ...(dup ? { mergedTripId: dup.id } : {}),
+              },
+            },
+            tx,
+          );
+        });
+        return;
+      } catch (e) {
+        // Параллельный апдейт из новой супергруппы успел создать дубль —
+        // повторяем, теперь он будет влит.
+        if (
+          attempt < 2 &&
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw e;
+      }
+    }
+  }
+
+  /**
+   * Вливает поездку `fromId` в `intoId`: участники сопоставляются по аккаунту
+   * (или по @username у заглушек), все ссылки на них переназначаются; расходы,
+   * касса, взаиморасчёты и история переносятся. Поездка `fromId` удаляется.
+   */
+  private async mergeTripInto(
+    tx: Prisma.TransactionClient,
+    fromId: string,
+    intoId: string,
+  ): Promise<void> {
+    const [fromMembers, intoMembers] = await Promise.all([
+      tx.tripMember.findMany({ where: { tripId: fromId } }),
+      tx.tripMember.findMany({ where: { tripId: intoId } }),
+    ]);
+    const intoHasOwner = intoMembers.some((m) => m.role === MemberRole.OWNER);
+
+    for (const m of fromMembers) {
+      const target = m.userId
+        ? intoMembers.find((t) => t.userId === m.userId)
+        : m.telegramUsername
+          ? intoMembers.find(
+              (t) => t.userId === null && t.telegramUsername === m.telegramUsername,
+            )
+          : undefined;
+      if (!target) {
+        await tx.tripMember.update({
+          where: { id: m.id },
+          data: {
+            tripId: intoId,
+            ...(intoHasOwner && m.role === MemberRole.OWNER
+              ? { role: MemberRole.MEMBER }
+              : {}),
+          },
+        });
+        continue;
+      }
+      await tx.expense.updateMany({
+        where: { paidByMemberId: m.id },
+        data: { paidByMemberId: target.id },
+      });
+      await tx.expenseShare.updateMany({
+        where: { memberId: m.id },
+        data: { memberId: target.id },
+      });
+      await tx.fundTransaction.updateMany({
+        where: { memberId: m.id },
+        data: { memberId: target.id },
+      });
+      await tx.settlement.updateMany({
+        where: { fromMemberId: m.id },
+        data: { fromMemberId: target.id },
+      });
+      await tx.settlement.updateMany({
+        where: { toMemberId: m.id },
+        data: { toMemberId: target.id },
+      });
+      await tx.tripMember.updateMany({
+        where: { coveredByMemberId: m.id },
+        data: { coveredByMemberId: target.id },
+      });
+      if (m.isActive && !target.isActive) {
+        await tx.tripMember.update({
+          where: { id: target.id },
+          data: { isActive: true },
+        });
+      }
+      await tx.tripMember.delete({ where: { id: m.id } });
+      // Записи дубля о его появлении — повтор уже существующего участника.
+      await tx.operationHistory.deleteMany({
+        where: { tripId: fromId, entityType: 'TripMember', entityId: m.id },
+      });
+    }
+
+    // «Поездка создана» у дубля — артефакт, в истории исходной поездки не нужен.
+    await tx.operationHistory.deleteMany({
+      where: { tripId: fromId, action: HistoryAction.TRIP_CREATED },
+    });
+    const moved = { where: { tripId: fromId }, data: { tripId: intoId } };
+    await tx.expense.updateMany(moved);
+    await tx.fundTransaction.updateMany(moved);
+    await tx.settlement.updateMany(moved);
+    await tx.operationHistory.updateMany(moved);
+    await tx.trip.delete({ where: { id: fromId } });
+  }
+
+  /**
    * Поездка группового чата с рассчитанными балансами (для команды /balance).
    * Создаёт поездку, если её ещё нет.
    */
@@ -206,14 +355,24 @@ export class TripsService {
   /** Находит поездку по Chat ID / chatInstance / startParam или создаёт новую. */
   async resolveOrCreate(user: User, dto: ResolveTripDto) {
     const keys: Prisma.TripWhereInput[] = [];
-    if (dto.telegramChatId !== undefined)
-      keys.push({ telegramChatId: BigInt(dto.telegramChatId) });
+    // Chat ID сверяем и с прежним id группы: после превращения в супергруппу
+    // старые кнопки «c<старый id>» должны вести в ту же поездку.
+    const chatIds: bigint[] = [];
+    if (dto.telegramChatId !== undefined) chatIds.push(BigInt(dto.telegramChatId));
+    const fromStart = dto.startParam?.match(/^c(-?\d+)$/);
+    if (fromStart) chatIds.push(BigInt(fromStart[1]));
+    for (const id of chatIds) {
+      keys.push({ telegramChatId: id }, { migratedFromChatId: id });
+    }
     if (dto.chatInstance) keys.push({ chatInstance: dto.chatInstance });
     if (dto.startParam) keys.push({ startParam: dto.startParam });
 
     let trip =
       keys.length > 0
-        ? await this.prisma.trip.findFirst({ where: { OR: keys } })
+        ? await this.prisma.trip.findFirst({
+            where: { OR: keys },
+            orderBy: { createdAt: 'asc' },
+          })
         : null;
 
     if (!trip) {

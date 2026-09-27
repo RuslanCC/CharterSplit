@@ -240,6 +240,19 @@ export class BotService implements OnModuleInit {
       }
     });
 
+    // Группа стала супергруппой (смена видимости истории, публичная ссылка и
+    // т.п.) — у чата новый chat_id. Приходят два сервисных сообщения: в старую
+    // группу (migrate_to) и в новую супергруппу (migrate_from); переносим
+    // поездку по первому, второе — no-op. Должно стоять до общего 'message',
+    // иначе регистрация отправителя заведёт под новым id пустую поездку.
+    bot.on('message:migrate_to_chat_id', async (ctx) => {
+      await this.migrateChat(ctx.chat.id, ctx.message.migrate_to_chat_id);
+    });
+
+    bot.on('message:migrate_from_chat_id', async (ctx) => {
+      await this.migrateChat(ctx.message.migrate_from_chat_id, ctx.chat.id);
+    });
+
     bot.on('message', async (ctx) => {
       if (ctx.chat?.type === 'private') {
         await ctx.reply(
@@ -257,6 +270,18 @@ export class BotService implements OnModuleInit {
         await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
       }
     });
+  }
+
+  /** Переносит поездку группы на новый chat_id супергруппы. */
+  private async migrateChat(fromChatId: number, toChatId: number): Promise<void> {
+    try {
+      await this.trips.migrateGroupChat(fromChatId, toChatId);
+      this.logger.log(`trip migrated: chat ${fromChatId} → ${toChatId}`);
+    } catch (e) {
+      this.logger.error(
+        `chat migration ${fromChatId} → ${toChatId} failed: ${(e as Error).message}`,
+      );
+    }
   }
 
   /** Регистрирует пользователя Telegram как участника поездки группы. */

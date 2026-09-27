@@ -31,6 +31,10 @@ model User {
 model Trip {
   id             String   @id @default(cuid())
   telegramChatId BigInt?  @unique
+  // Прежний chat_id группы, если Telegram превратил её в супергруппу (смена
+  // видимости истории, публичная ссылка и т.п. меняют chat_id). Старые кнопки
+  // «c<старый id>» в истории чата продолжают вести в эту же поездку.
+  migratedFromChatId BigInt? @unique
   chatInstance   String?  @unique
   startParam     String?  @unique
   title          String
