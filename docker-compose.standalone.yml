@@ -1,12 +1,11 @@
-# CharterSplit — STANDALONE режим (чистый сервер, свой edge nginx + Let's Encrypt).
-# Использовать ВМЕСТО docker-compose.yml, когда нет внешнего Caddy:
+# CharterSplit — STANDALONE режим (чистый сервер, свой nginx + Let's Encrypt).
+# Использовать ВМЕСТО docker-compose.yml, когда на сервере нет reverse-proxy:
 #   docker compose -f docker-compose.standalone.yml up -d
 #
 # Предусловия: DNS A-запись ${DOMAIN} → IP сервера; открыты порты 80/443.
 # Первый запуск рекомендуется с CERTBOT_STAGING=1 (в .env), затем переключить на 0.
 #
-# В этом режиме Mini App отдаётся в корне домена (basePath пустой):
-# при сборке фронта передаём NEXT_PUBLIC_BASE_PATH="" и BASE_PATH="".
+# В этом режиме Mini App отдаётся в корне домена (basePath пустой).
 services:
   db:
     image: postgres:18-alpine
@@ -18,14 +17,14 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "5" }
+      options: { max-size: '10m', max-file: '5' }
 
   backend:
     build:
@@ -41,59 +40,84 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
       INIT_DATA_EXPIRES_IN: ${INIT_DATA_EXPIRES_IN:-3600}
+      SUPPORT_CONTACT: ${SUPPORT_CONTACT:-}
       PUBLIC_URL: https://${DOMAIN}
-      BASE_PATH: ""
-      PORT: "3000"
+      PORT: '3000'
     expose:
-      - "3000"
+      - '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "5" }
+      options: { max-size: '10m', max-file: '5' }
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_BASE_PATH: ""
-        NEXT_PUBLIC_APP_URL: https://${DOMAIN}
+        NEXT_PUBLIC_BASE_PATH: ''
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       NODE_ENV: production
-      PORT: "3000"
-      HOSTNAME: "0.0.0.0"
+      PORT: '3000'
+      HOSTNAME: '0.0.0.0'
     expose:
-      - "3000"
+      - '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "5" }
+      options: { max-size: '10m', max-file: '5' }
 
   nginx:
     image: nginx:alpine
     restart: unless-stopped
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     environment:
       DOMAIN: ${DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./nginx/templates:/etc/nginx/templates:ro
       - ./nginx/entrypoint.sh:/entrypoint.sh:ro
       - certbot_conf:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    entrypoint: ['/bin/sh', '/entrypoint.sh']
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/healthz']
       interval: 30s
       timeout: 5s
       retries: 3
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "5" }
+      options: { max-size: '10m', max-file: '5' }
 
   certbot:
     image: certbot/certbot
@@ -108,10 +132,10 @@ services:
       - ./certbot/entrypoint.sh:/entrypoint.sh:ro
       - certbot_conf:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    entrypoint: ['/bin/sh', '/entrypoint.sh']
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "5" }
+      options: { max-size: '10m', max-file: '5' }
 
 volumes:
   pgdata:

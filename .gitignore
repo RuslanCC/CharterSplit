@@ -28,3 +28,6 @@ certbot/www/
 
 # docker local overrides
 docker-compose.override.yml
+
+# локальные настройки Claude Code
+.claude/

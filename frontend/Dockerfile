@@ -4,11 +4,9 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 COPY . .
-# basePath/URL «зашиваются» в бандл на этапе сборки.
-ARG NEXT_PUBLIC_BASE_PATH=/chartersplit
-ARG NEXT_PUBLIC_APP_URL=
+# basePath «зашивается» в бандл на этапе сборки (пусто — корень домена).
+ARG NEXT_PUBLIC_BASE_PATH=
 ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
-ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
