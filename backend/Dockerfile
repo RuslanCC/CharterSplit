@@ -1,5 +1,5 @@
 # ── build stage ───────────────────────────────────────────────
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 # Prisma требует openssl.
 RUN apk add --no-cache openssl
@@ -12,7 +12,7 @@ COPY src ./src
 RUN npm run build
 
 # ── runtime stage ─────────────────────────────────────────────
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache openssl
