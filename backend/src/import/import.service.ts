@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { SplitType, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
 import { buildCoverageResolver } from '../common/coverage';
+import { NotifyService } from '../telegram/notify.service';
 import { ImportRowDto, SplitwiseImportDto } from './dto';
 
 export interface ImportResult {
@@ -36,6 +37,7 @@ export class ImportService {
     private readonly prisma: PrismaService,
     private readonly access: AccessService,
     private readonly history: HistoryService,
+    private readonly notify: NotifyService,
   ) {}
 
   async importSplitwise(
@@ -62,7 +64,16 @@ export class ImportService {
       throw new BadRequestException('two CSV participants are mapped to the same member');
     }
 
-    const trip = await this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } });
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      include: { settings: true },
+    });
+    if (
+      dto.mappings.some((m) => m.guestName) &&
+      trip.settings?.allowGuestMembers === false
+    ) {
+      throw new ForbiddenException('guest members are disabled for this trip');
+    }
     const members = await this.prisma.tripMember.findMany({ where: { tripId } });
     const memberById = new Map(members.map((m) => [m.id, m]));
     for (const id of mappedIds) {
@@ -167,6 +178,8 @@ export class ImportService {
       { timeout: 120_000 },
     );
 
+    // Fire-and-forget: обновить закреплённое табло баланса в чате.
+    void this.notify.balanceChanged(tripId);
     return result;
   }
 
@@ -176,7 +189,12 @@ export class ImportService {
     memberByCsvName: Map<string, string>,
     effectiveId: (id: string) => string,
     result: ImportResult,
-  ): { description: string; amount: number; paidByMemberId: string; shares: PreparedShare[] }[] {
+  ): {
+    description: string;
+    amount: number;
+    paidByMemberId: string;
+    shares: PreparedShare[];
+  }[] {
     const skip = (reason: string) => {
       result.skipped.push({ description: row.description, date: row.date, reason });
       return [];

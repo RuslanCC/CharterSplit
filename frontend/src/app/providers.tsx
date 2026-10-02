@@ -2,12 +2,8 @@
 
 import * as React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { api, ApiError } from '@/lib/api';
-import {
-  applyTelegramTheme,
-  getWebApp,
-  getInitDataRaw,
-} from '@/lib/telegram';
+import { api, ApiError, errorMessage } from '@/lib/api';
+import { applyTelegramTheme, getWebApp, getInitDataRaw } from '@/lib/telegram';
 import { useBackButton } from '@/lib/hooks';
 import { BottomNav } from '@/components/nav';
 import type { Session, Trip } from '@/lib/types';
@@ -38,16 +34,10 @@ type State =
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>({ phase: 'loading' });
 
+  const started = React.useRef(false);
+
   const bootstrap = React.useCallback(async () => {
     const wa = getWebApp();
-    if (wa) {
-      wa.ready();
-      wa.expand();
-      applyTelegramTheme();
-      const onTheme = () => applyTelegramTheme();
-      wa.onEvent('themeChanged', onTheme);
-    }
-
     if (!getInitDataRaw()) {
       setState({ phase: 'no-telegram' });
       return;
@@ -55,18 +45,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const session = await api.post<Session>('/auth/session');
-      const { context } = session;
-      const chatTitle = wa?.initDataUnsafe?.chat?.title as string | undefined;
+      // Ключ поездки бэкенд берёт из подписанного initData; название чата —
+      // только как имя для новой поездки.
+      const chatTitle = wa?.initDataUnsafe?.chat?.title;
       const trip = await api.post<Trip>('/trips/resolve', {
-        telegramChatId: context.telegramChatId ?? undefined,
-        chatInstance: context.chatInstance ?? undefined,
-        startParam: context.startParam ?? undefined,
-        title: chatTitle,
+        title: typeof chatTitle === 'string' && chatTitle ? chatTitle : undefined,
       });
       setState({ phase: 'ready', trip, userId: session.user.id });
     } catch (e) {
-      const message =
-        e instanceof ApiError ? e.message : (e as Error).message;
+      const message = errorMessage(e);
       // 409 — запуск без привязки к поездке (не через кнопку из группы).
       // Не показываем это как ошибку и не создаём пустую поездку.
       if (e instanceof ApiError && e.status === 409) {
@@ -78,19 +65,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
+    const wa = getWebApp();
+    if (!wa) return;
+    wa.ready();
+    wa.expand();
+    applyTelegramTheme();
+    const onTheme = () => applyTelegramTheme();
+    wa.onEvent('themeChanged', onTheme);
+    return () => wa.offEvent('themeChanged', onTheme);
+  }, []);
+
+  React.useEffect(() => {
+    // StrictMode в dev вызывает эффект дважды — не резолвим поездку параллельно.
+    if (started.current) return;
+    started.current = true;
     void bootstrap();
   }, [bootstrap]);
 
+  const tripId = state.phase === 'ready' ? state.trip.id : null;
   const reloadTrip = React.useCallback(async () => {
-    setState((s) => {
-      if (s.phase !== 'ready') return s;
-      return s;
-    });
-    if (state.phase === 'ready') {
-      const trip = await api.get<Trip>(`/trips/${state.trip.id}`);
-      setState({ phase: 'ready', trip, userId: state.userId });
-    }
-  }, [state]);
+    if (!tripId) return;
+    const trip = await api.get<Trip>(`/trips/${tripId}`);
+    setState((s) => (s.phase === 'ready' ? { ...s, trip } : s));
+  }, [tripId]);
 
   if (state.phase === 'loading') {
     return <CenterMessage title="Загрузка…" />;
@@ -104,17 +101,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }
   if (state.phase === 'no-trip') {
-    return (
-      <CenterMessage
-        title="Откройте поездку из чата"
-        subtitle={state.message}
-      />
-    );
+    return <CenterMessage title="Откройте поездку из чата" subtitle={state.message} />;
   }
   if (state.phase === 'error') {
-    return (
-      <CenterMessage title="Не удалось загрузить" subtitle={state.message} />
-    );
+    return <CenterMessage title="Не удалось загрузить" subtitle={state.message} />;
   }
 
   const isOwner =
@@ -153,19 +143,11 @@ function BackButtonManager() {
   return null;
 }
 
-function CenterMessage({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}) {
+function CenterMessage({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center px-8 text-center">
       <div className="text-lg font-semibold">{title}</div>
-      {subtitle && (
-        <div className="mt-2 text-sm text-hint">{subtitle}</div>
-      )}
+      {subtitle && <div className="mt-2 text-sm text-hint">{subtitle}</div>}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Plus } from 'lucide-react';
 import { useTrip } from '@/app/providers';
-import { ApiError } from '@/lib/api';
+import { errorMessage } from '@/lib/api';
 import { parseMoney, formatMoney, moneyToInput, SPLIT_LABELS } from '@/lib/format';
 import type { Expense, SplitType } from '@/lib/types';
 import { useIsTelegram, useMainButton } from '@/lib/hooks';
@@ -52,7 +52,7 @@ export function ExpenseForm({
 
   // Категорию можно сменить: префилл из расхода (правка) или из кнопки (создание).
   const [category, setCategory] = React.useState<string | null>(
-    initial ? initial.category : initialCategory ?? null,
+    initial ? initial.category : (initialCategory ?? null),
   );
 
   // Список для выбора: стандартные категории + текущая нестандартная (импорт).
@@ -71,9 +71,7 @@ export function ExpenseForm({
   const [amount, setAmount] = React.useState(
     initial ? moneyToInput(initial.amount - initial.tipAmount) : '',
   );
-  const [tip, setTip] = React.useState(
-    initial ? moneyToInput(initial.tipAmount) : '',
-  );
+  const [tip, setTip] = React.useState(initial ? moneyToInput(initial.tipAmount) : '');
   // При создании плательщик по умолчанию — сам добавляющий (его участник),
   // а не первый по joinedAt (обычно владелец). При правке — как в расходе.
   const [payer, setPayer] = React.useState(
@@ -89,18 +87,13 @@ export function ExpenseForm({
   const [selected, setSelected] = React.useState<Record<string, boolean>>(() =>
     initial && !initial.fromFund
       ? Object.fromEntries(
-          members.map((m) => [
-            m.id,
-            initial.shares.some((s) => s.memberId === m.id),
-          ]),
+          members.map((m) => [m.id, initial.shares.some((s) => s.memberId === m.id)]),
         )
       : Object.fromEntries(members.map((m) => [m.id, m.isActive])),
   );
   const [units, setUnits] = React.useState<Record<string, string>>(() =>
     initial?.splitType === 'SHARES'
-      ? Object.fromEntries(
-          initial.shares.map((s) => [s.memberId, String(s.shareUnits)]),
-        )
+      ? Object.fromEntries(initial.shares.map((s) => [s.memberId, String(s.shareUnits)]))
       : {},
   );
   const [exact, setExact] = React.useState<Record<string, string[]>>(() =>
@@ -117,10 +110,7 @@ export function ExpenseForm({
   const exactAuto = splitType === 'EXACT' && !fromFund;
 
   const exactSubtotal = (memberId: string) =>
-    (exact[memberId] ?? []).reduce(
-      (s, v) => s + (parseMoney(v) || 0),
-      0,
-    );
+    (exact[memberId] ?? []).reduce((s, v) => s + (parseMoney(v) || 0), 0);
   const exactSum = members
     .filter((m) => selected[m.id])
     .reduce((s, m) => s + exactSubtotal(m.id), 0);
@@ -140,8 +130,7 @@ export function ExpenseForm({
     let participants: ExpensePayload['participants'];
     if (!fromFund) {
       if (chosen.length === 0) return setError('Выберите участников');
-      if (splitType === 'EQUAL')
-        participants = chosen.map((m) => ({ memberId: m.id }));
+      if (splitType === 'EQUAL') participants = chosen.map((m) => ({ memberId: m.id }));
       else if (splitType === 'SHARES')
         participants = chosen.map((m) => ({
           memberId: m.id,
@@ -169,7 +158,7 @@ export function ExpenseForm({
       haptic('success');
     } catch (e) {
       haptic('error');
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
       setSaving(false);
     }
   }
@@ -231,12 +220,8 @@ export function ExpenseForm({
         <div>
           <Label>Сумма ({trip.currency})</Label>
           <div className="rounded-xl bg-card px-4 py-3">
-            <span className="font-semibold">
-              {formatMoney(exactSum, trip.currency)}
-            </span>
-            <span className="ml-2 text-xs text-hint">
-              считается автоматически
-            </span>
+            <span className="font-semibold">{formatMoney(exactSum, trip.currency)}</span>
+            <span className="ml-2 text-xs text-hint">считается автоматически</span>
           </div>
         </div>
       ) : (
@@ -350,24 +335,22 @@ export function ExpenseForm({
                   )}
                   {selected[m.id] && splitType === 'EXACT' && (
                     <div className="flex flex-col items-end gap-1">
-                      {(exact[m.id]?.length ? exact[m.id] : ['']).map(
-                        (v, i) => (
-                          <input
-                            key={i}
-                            value={v}
-                            onChange={(e) =>
-                              setExact((x) => {
-                                const list = [...(x[m.id]?.length ? x[m.id] : [''])];
-                                list[i] = e.target.value;
-                                return { ...x, [m.id]: list };
-                              })
-                            }
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            className="w-24 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm"
-                          />
-                        ),
-                      )}
+                      {(exact[m.id]?.length ? exact[m.id] : ['']).map((v, i) => (
+                        <input
+                          key={i}
+                          value={v}
+                          onChange={(e) =>
+                            setExact((x) => {
+                              const list = [...(x[m.id]?.length ? x[m.id] : [''])];
+                              list[i] = e.target.value;
+                              return { ...x, [m.id]: list };
+                            })
+                          }
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          className="w-24 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm"
+                        />
+                      ))}
                       <button
                         onClick={() =>
                           setExact((x) => ({

@@ -1,8 +1,9 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { User } from '@prisma/client';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from './history.service';
+import { HistoryQueryDto } from './dto';
 
 @Controller('trips/:tripId/history')
 export class HistoryController {
@@ -15,21 +16,9 @@ export class HistoryController {
   async list(
     @Param('tripId') tripId: string,
     @CurrentUser() user: User,
-    @Query('cursor') cursor?: string,
-    @Query('take') take?: string,
-    @Query('action') action?: string,
-    @Query('memberId') memberId?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query() query: HistoryQueryDto,
   ) {
     await this.access.assertMember(tripId, user);
-    return this.history.list(tripId, {
-      cursor,
-      take: take ? Number(take) : undefined,
-      action,
-      memberId,
-      from,
-      to,
-    });
+    return this.history.list(tripId, query);
   }
 }

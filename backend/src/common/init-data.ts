@@ -10,8 +10,8 @@ export function parseInitData(raw: string): ParsedInitData {
 
   const userJson = p.get('user');
   const chatJson = p.get('chat');
-  const user = userJson ? safeJson(userJson) : undefined;
-  const chat = chatJson ? safeJson(chatJson) : undefined;
+  const user = userJson ? safeJson<RawUser>(userJson) : undefined;
+  const chat = chatJson ? safeJson<RawChat>(chatJson) : undefined;
   const authDateRaw = p.get('auth_date');
 
   return {
@@ -25,9 +25,7 @@ export function parseInitData(raw: string): ParsedInitData {
           photoUrl: user.photo_url ?? undefined,
         }
       : undefined,
-    chat: chat
-      ? { id: Number(chat.id), type: chat.type, title: chat.title }
-      : undefined,
+    chat: chat ? { id: Number(chat.id), type: chat.type, title: chat.title } : undefined,
     chatInstance: p.get('chat_instance') ?? undefined,
     chatType: p.get('chat_type') ?? undefined,
     startParam: p.get('start_param') ?? undefined,
@@ -35,9 +33,24 @@ export function parseInitData(raw: string): ParsedInitData {
   };
 }
 
-function safeJson(value: string): any {
+interface RawUser {
+  id: number | string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+  photo_url?: string;
+}
+
+interface RawChat {
+  id: number | string;
+  type?: string;
+  title?: string;
+}
+
+function safeJson<T>(value: string): T | undefined {
   try {
-    return JSON.parse(value);
+    return JSON.parse(value) as T;
   } catch {
     return undefined;
   }

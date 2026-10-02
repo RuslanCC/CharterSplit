@@ -4,14 +4,10 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api, ApiError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import type { ImportResult, Member } from '@/lib/types';
-import {
-  parseSplitwiseCsv,
-  suggestMemberId,
-  type SplitwiseFile,
-} from '@/lib/splitwise';
+import { parseSplitwiseCsv, suggestMemberId, type SplitwiseFile } from '@/lib/splitwise';
 import { Button } from '@/components/ui/button';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { Label, Select } from '@/components/ui/input';
@@ -96,29 +92,26 @@ export default function ImportPage() {
     }
     setBusy(true);
     try {
-      const res = await api.post<ImportResult>(
-        `/trips/${trip.id}/import/splitwise`,
-        {
-          mappings: file.participants.map((csvName) =>
-            mapping[csvName] === GUEST
-              ? { csvName, guestName: csvName }
-              : { csvName, memberId: mapping[csvName] },
-          ),
-          rows: file.rows.map((r) => ({
-            date: r.date,
-            description: r.description,
-            category: r.category,
-            cost: r.cost,
-            currency: r.currency,
-            nets: r.nets,
-          })),
-        },
-      );
+      const res = await api.post<ImportResult>(`/trips/${trip.id}/import/splitwise`, {
+        mappings: file.participants.map((csvName) =>
+          mapping[csvName] === GUEST
+            ? { csvName, guestName: csvName }
+            : { csvName, memberId: mapping[csvName] },
+        ),
+        rows: file.rows.map((r) => ({
+          date: r.date,
+          description: r.description,
+          category: r.category,
+          cost: r.cost,
+          currency: r.currency,
+          nets: r.nets,
+        })),
+      });
       setResult(res);
       setFile(null);
       await reloadTrip();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -136,8 +129,7 @@ export default function ImportPage() {
             </div>
             {result.createdGuests.length > 0 && (
               <div className="mt-1 text-sm text-hint">
-                Созданы гости:{' '}
-                {result.createdGuests.map((g) => g.displayName).join(', ')}
+                Созданы гости: {result.createdGuests.map((g) => g.displayName).join(', ')}
               </div>
             )}
           </Card>

@@ -20,6 +20,10 @@ import { HealthModule } from './health/health.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+/** Путь вебхука содержит секрет — маскируем его в логах запросов. */
+const maskWebhookSecret = (url: string) =>
+  url.replace(/(\/telegram\/webhook\/)[^/?#]+/, '$1***');
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -29,8 +33,20 @@ const isProd = process.env.NODE_ENV === 'production';
         transport: isProd
           ? undefined
           : { target: 'pino-pretty', options: { singleLine: true } },
-        // не логируем секреты
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // Не логируем секреты: initData, cookie, секрет вебхука (заголовок и путь).
+        redact: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers["x-telegram-bot-api-secret-token"]',
+        ],
+        serializers: {
+          // params дублируют url (и секрет в нём) — не пишем их вовсе.
+          req(req: { url?: string; params?: unknown }) {
+            if (req.url) req.url = maskWebhookSecret(req.url);
+            delete req.params;
+            return req;
+          },
+        },
         autoLogging: true,
       },
     }),

@@ -15,12 +15,22 @@ export function formatMoney(minor: number, currency = 'RUB'): string {
 
 /** 12345 → '123.45'; 10000 → '100' (для префилла инпутов, обратное к parseMoney). */
 export function moneyToInput(minor: number): string {
-  return (minor / 100).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  return (minor / 100)
+    .toFixed(2)
+    .replace(/\.00$/, '')
+    .replace(/(\.\d)0$/, '$1');
 }
 
-/** '123.45' | '123,45' → 12345 (минорные единицы). */
+/** '123.45' | '123,45' | '1 000,5' | '1,000.50' → минорные единицы; NaN при ошибке. */
 export function parseMoney(input: string): number {
-  const normalized = input.replace(/\s/g, '').replace(',', '.');
+  let normalized = input.replace(/\s/g, '');
+  // Есть и точка, и запятая — запятые считаем разделителями тысяч.
+  if (normalized.includes('.') && normalized.includes(',')) {
+    normalized = normalized.replace(/,/g, '');
+  } else {
+    normalized = normalized.replace(',', '.');
+  }
+  if (normalized === '') return NaN;
   const value = Number(normalized);
   if (!Number.isFinite(value) || value < 0) return NaN;
   return Math.round(value * 100);
@@ -58,9 +68,7 @@ export function formatDayLabel(iso: string): string {
   const today = new Date();
   const startOfDay = (x: Date) =>
     new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diffDays = Math.round(
-    (startOfDay(today) - startOfDay(d)) / 86_400_000,
-  );
+  const diffDays = Math.round((startOfDay(today) - startOfDay(d)) / 86_400_000);
   if (diffDays === 0) return 'Сегодня';
   if (diffDays === 1) return 'Вчера';
   try {

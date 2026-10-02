@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CurrentUser, InitData } from '../common/decorators/current-user.decorator';
+import type { ParsedInitData } from '../common/decorators/current-user.decorator';
 import { TripsService } from './trips.service';
 import { ResolveTripDto, UpdateTripDto } from './dto';
 
@@ -10,8 +11,12 @@ export class TripsController {
 
   /** Резолвит поездку по контексту чата (создаёт при отсутствии). */
   @Post('resolve')
-  resolve(@CurrentUser() user: User, @Body() dto: ResolveTripDto) {
-    return this.trips.resolveOrCreate(user, dto);
+  resolve(
+    @CurrentUser() user: User,
+    @InitData() initData: ParsedInitData,
+    @Body() dto: ResolveTripDto,
+  ) {
+    return this.trips.resolveOrCreate(user, initData, dto);
   }
 
   @Get(':id')
@@ -30,11 +35,7 @@ export class TripsController {
   }
 
   @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-    @Body() dto: UpdateTripDto,
-  ) {
+  update(@Param('id') id: string, @CurrentUser() user: User, @Body() dto: UpdateTripDto) {
     return this.trips.update(id, user, dto);
   }
 }

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
+import { fundBalance } from '../common/money';
 import { NotifyService } from '../telegram/notify.service';
 import { FundAdjustDto, FundTxnDto } from './dto';
 
@@ -32,14 +33,8 @@ export class FundService {
       }),
     ]);
 
-    let balance = 0;
-    for (const t of txns) {
-      if (t.type === FundTxnType.CONTRIBUTION) balance += t.amount;
-      else if (t.type === FundTxnType.PAYOUT) balance -= t.amount;
-      else balance += t.amount; // ADJUSTMENT (может быть отрицательным)
-    }
     const spentFromFund = fundExpenses.reduce((s, e) => s + e.amount, 0);
-    balance -= spentFromFund;
+    const balance = fundBalance(txns, spentFromFund);
 
     return {
       balance,

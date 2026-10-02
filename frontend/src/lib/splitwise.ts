@@ -128,9 +128,17 @@ export function parseSplitwiseCsv(text: string): SplitwiseFile {
 /** Автоподбор участника поездки по имени из CSV (точное имя → первое слово → username). */
 export function suggestMemberId(
   csvName: string,
-  members: { id: string; displayName: string; user?: { username: string | null } | null }[],
+  members: {
+    id: string;
+    displayName: string;
+    user?: { username: string | null } | null;
+  }[],
 ): string | null {
-  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
   const target = norm(csvName);
   if (!target) return null;
 

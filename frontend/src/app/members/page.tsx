@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { UserX, UserCheck, Pencil, Check, X } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api, ApiError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { Member } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, SectionTitle } from '@/components/ui/card';
@@ -26,9 +26,9 @@ export default function MembersPage() {
   }, [trip.id, reloadTrip]);
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- первичная загрузка списка
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   async function addGuest() {
     setError(null);
@@ -44,7 +44,7 @@ export default function MembersPage() {
       setName('');
       await refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -60,7 +60,7 @@ export default function MembersPage() {
       }
       await refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     }
   }
 
@@ -83,7 +83,7 @@ export default function MembersPage() {
       setEditingId(null);
       await refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     }
   }
 
@@ -93,7 +93,7 @@ export default function MembersPage() {
       await api.patch(`/trips/${trip.id}/members/${m.id}`, { coveredByMemberId });
       await refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     }
   }
 
@@ -166,15 +166,9 @@ export default function MembersPage() {
                         <button
                           onClick={() => toggle(m)}
                           className="active:opacity-60"
-                          aria-label={
-                            m.isActive ? 'Деактивировать' : 'Активировать'
-                          }
+                          aria-label={m.isActive ? 'Деактивировать' : 'Активировать'}
                         >
-                          {m.isActive ? (
-                            <UserX size={18} />
-                          ) : (
-                            <UserCheck size={18} />
-                          )}
+                          {m.isActive ? <UserX size={18} /> : <UserCheck size={18} />}
                         </button>
                       )}
                     </>
@@ -220,8 +214,8 @@ export default function MembersPage() {
           </Button>
         </div>
         <div className="mt-1.5 px-1 text-xs text-hint">
-          С @ — участник по нику Telegram: когда он откроет приложение,
-          запись привяжется к его аккаунту автоматически.
+          С @ — участник по нику Telegram: когда он откроет приложение, запись привяжется
+          к его аккаунту автоматически.
         </div>
         {error && <div className="mt-2 text-sm text-destructive">{error}</div>}
       </div>

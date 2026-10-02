@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ApiError } from './api';
+import { errorMessage } from './api';
 import { getWebApp } from './telegram';
 
 interface AsyncState<T> {
@@ -22,14 +22,12 @@ export function useAsync<T>(
 
   React.useEffect(() => {
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- перезагрузка данных при смене deps
     setLoading(true);
     setError(null);
     fn()
       .then((d) => alive && setData(d))
-      .catch((e) =>
-        alive &&
-        setError(e instanceof ApiError ? e.message : (e as Error).message),
-      )
+      .catch((e) => alive && setError(errorMessage(e)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -40,11 +38,20 @@ export function useAsync<T>(
   return { data, loading, error, reload: () => setTick((t) => t + 1) };
 }
 
-/** Есть ли под нами реальный клиент Telegram (для выбора нативного UI). */
+/**
+ * Есть ли под нами реальный клиент Telegram (для выбора нативного UI).
+ * Скрипт telegram-web-app.js создаёт `window.Telegram.WebApp` всегда, поэтому
+ * смотрим на платформу: в обычном браузере она `unknown`.
+ */
 export function useIsTelegram(): boolean {
-  const [inTg, setInTg] = React.useState(false);
-  React.useEffect(() => setInTg(!!getWebApp()), []);
-  return inTg;
+  return React.useSyncExternalStore(noopSubscribe, isTelegramClient, () => false);
+}
+
+const noopSubscribe = () => () => {};
+
+function isTelegramClient(): boolean {
+  const platform = getWebApp()?.platform;
+  return !!platform && platform !== 'unknown';
 }
 
 interface MainButtonOptions {
@@ -61,13 +68,12 @@ interface MainButtonOptions {
  * Вне Telegram — no-op (страница показывает свою обычную кнопку).
  */
 export function useMainButton(opts: MainButtonOptions): void {
-  const cbRef = React.useRef(opts.onClick);
-  cbRef.current = opts.onClick;
+  const onClick = React.useEffectEvent(opts.onClick);
 
   React.useEffect(() => {
     const mb = getWebApp()?.MainButton;
     if (!mb) return;
-    const handler = () => cbRef.current();
+    const handler = () => onClick();
     mb.onClick(handler);
     return () => {
       mb.offClick(handler);
@@ -94,13 +100,12 @@ export function useMainButton(opts: MainButtonOptions): void {
  * Скрывается при размонтировании. Вне Telegram — no-op.
  */
 export function useBackButton(onBack: () => void): void {
-  const cbRef = React.useRef(onBack);
-  cbRef.current = onBack;
+  const handleBack = React.useEffectEvent(onBack);
 
   React.useEffect(() => {
     const bb = getWebApp()?.BackButton;
     if (!bb) return;
-    const handler = () => cbRef.current();
+    const handler = () => handleBack();
     bb.onClick(handler);
     bb.show();
     return () => {

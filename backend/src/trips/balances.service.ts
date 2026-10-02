@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { FundTxnType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { settle, computeTipShares } from '../common/money';
+import { computeTipShares, fundBalance, settle } from '../common/money';
 import { buildCoverageResolver } from '../common/coverage';
 
 export interface MemberBalance {
@@ -30,7 +29,8 @@ export class BalancesService {
       this.prisma.tripMember.findMany({ where: { tripId } }),
       this.prisma.expense.findMany({
         where: { tripId, fromFund: false },
-        include: { shares: true },
+        // Порядок долей задаёт, кому достанется остаток от чаевых — фиксируем его.
+        include: { shares: { orderBy: { id: 'asc' } } },
       }),
       this.prisma.fundTransaction.findMany({ where: { tripId } }),
       this.prisma.settlement.findMany({
@@ -99,23 +99,15 @@ export class BalancesService {
 
     const transfers = settle(effectiveBalance);
 
-    // Баланс кассы: взносы − выплаты − оплаты расходов из кассы.
-    let fundBalance = 0;
-    for (const t of fundTxns) {
-      if (t.type === FundTxnType.CONTRIBUTION) fundBalance += t.amount;
-      else if (t.type === FundTxnType.PAYOUT) fundBalance -= t.amount;
-      else if (t.type === FundTxnType.ADJUSTMENT) fundBalance += t.amount;
-    }
     const fundExpenses = await this.prisma.expense.aggregate({
       where: { tripId, fromFund: true },
       _sum: { amount: true },
     });
-    fundBalance -= fundExpenses._sum.amount ?? 0;
+    const fundBal = fundBalance(fundTxns, fundExpenses._sum.amount ?? 0);
 
     // Общая сумма расходов поездки: личные + оплаченные из кассы.
     const totalSpent =
-      expenses.reduce((sum, e) => sum + e.amount, 0) +
-      (fundExpenses._sum.amount ?? 0);
+      expenses.reduce((sum, e) => sum + e.amount, 0) + (fundExpenses._sum.amount ?? 0);
 
     // Обогащаем переводы именами.
     const nameById = new Map(members.map((m) => [m.id, m.displayName]));
@@ -135,7 +127,7 @@ export class BalancesService {
       members: memberBalances,
       transfers: namedTransfers,
       settlements: namedSettlements,
-      fund: { balance: fundBalance },
+      fund: { balance: fundBal },
       totalSpent,
     };
   }
@@ -168,8 +160,7 @@ export class BalancesService {
         spentFromFund += e.amount;
       } else {
         spentPersonal += e.amount;
-        paidByMember[e.paidByMemberId] =
-          (paidByMember[e.paidByMemberId] ?? 0) + e.amount;
+        paidByMember[e.paidByMemberId] = (paidByMember[e.paidByMemberId] ?? 0) + e.amount;
       }
       if (!firstAt || e.spentAt < firstAt) firstAt = e.spentAt;
       if (!lastAt || e.spentAt > lastAt) lastAt = e.spentAt;

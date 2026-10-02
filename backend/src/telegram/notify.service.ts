@@ -28,11 +28,7 @@ export class NotifyService {
    * Отправляет карточку нового расхода в чат и запоминает id сообщения,
    * чтобы при изменении расхода отредактировать его на месте.
    */
-  async expenseCreated(
-    tripId: string,
-    actor: User,
-    expenseId: string,
-  ): Promise<void> {
+  async expenseCreated(tripId: string, actor: User, expenseId: string): Promise<void> {
     try {
       const trip = await this.notifiableTrip(tripId);
       if (!trip) return;
@@ -55,11 +51,7 @@ export class NotifyService {
    * отправленное сообщение на месте. Если карточки ещё не было (уведомления были
    * выключены) или её удалили — отправляет новую и запоминает её id.
    */
-  async expenseUpdated(
-    tripId: string,
-    actor: User,
-    expenseId: string,
-  ): Promise<void> {
+  async expenseUpdated(tripId: string, actor: User, expenseId: string): Promise<void> {
     try {
       const trip = await this.notifiableTrip(tripId);
       if (!trip) return;
@@ -107,7 +99,10 @@ export class NotifyService {
       where: { id: expenseId, tripId },
       include: {
         paidByMember: { select: { displayName: true } },
-        shares: { include: { member: { select: { displayName: true } } } },
+        shares: {
+          orderBy: { id: 'asc' },
+          include: { member: { select: { displayName: true } } },
+        },
       },
     });
     if (!expense) return null;

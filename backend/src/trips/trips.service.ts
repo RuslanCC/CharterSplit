@@ -1,17 +1,23 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { MemberRole, Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
+import { ChatMembershipService } from '../common/chat-membership.service';
+import type { ParsedInitData } from '../common/decorators/current-user.decorator';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
 import { BalancesService } from './balances.service';
 import { displayNameOf } from '../common/format';
 import { ResolveTripDto, UpdateTripDto } from './dto';
+import { launchKeysFromInitData, needsMembershipCheck } from './launch-keys';
+
+const DEFAULT_TRIP_TITLE = 'Поездка';
 
 @Injectable()
 export class TripsService {
@@ -20,6 +26,7 @@ export class TripsService {
     private readonly access: AccessService,
     private readonly history: HistoryService,
     private readonly balances: BalancesService,
+    private readonly membership: ChatMembershipService,
   ) {}
 
   /**
@@ -39,7 +46,7 @@ export class TripsService {
         data: {
           telegramChatId,
           startParam: `c${chatId}`,
-          title: title?.trim() || 'Поездка',
+          title: title?.trim() || DEFAULT_TRIP_TITLE,
           settings: { create: {} },
         },
       });
@@ -304,9 +311,7 @@ export class TripsService {
         {
           tripId: trip.id,
           actorUserId: user.id,
-          action: placeholder
-            ? HistoryAction.MEMBER_UPDATED
-            : HistoryAction.MEMBER_ADDED,
+          action: placeholder ? HistoryAction.MEMBER_UPDATED : HistoryAction.MEMBER_ADDED,
           entityType: 'TripMember',
           entityId: m.id,
           payload: {
@@ -352,20 +357,26 @@ export class TripsService {
     });
   }
 
-  /** Находит поездку по Chat ID / chatInstance / startParam или создаёт новую. */
-  async resolveOrCreate(user: User, dto: ResolveTripDto) {
+  /**
+   * Находит поездку по ключам запуска (Chat ID / chatInstance / startParam)
+   * или создаёт новую. Ключи берутся только из подписанного initData — тело
+   * запроса задаёт лишь название и валюту новой поездки.
+   */
+  async resolveOrCreate(
+    user: User,
+    initData: ParsedInitData | undefined,
+    dto: ResolveTripDto,
+  ) {
+    const launch = launchKeysFromInitData(initData);
     const keys: Prisma.TripWhereInput[] = [];
     // Chat ID сверяем и с прежним id группы: после превращения в супергруппу
     // старые кнопки «c<старый id>» должны вести в ту же поездку.
-    const chatIds: bigint[] = [];
-    if (dto.telegramChatId !== undefined) chatIds.push(BigInt(dto.telegramChatId));
-    const fromStart = dto.startParam?.match(/^c(-?\d+)$/);
-    if (fromStart) chatIds.push(BigInt(fromStart[1]));
-    for (const id of chatIds) {
+    if (launch.chatId !== undefined) {
+      const id = BigInt(launch.chatId);
       keys.push({ telegramChatId: id }, { migratedFromChatId: id });
     }
-    if (dto.chatInstance) keys.push({ chatInstance: dto.chatInstance });
-    if (dto.startParam) keys.push({ startParam: dto.startParam });
+    if (launch.chatInstance) keys.push({ chatInstance: launch.chatInstance });
+    if (launch.startParam) keys.push({ startParam: launch.startParam });
 
     let trip =
       keys.length > 0
@@ -378,24 +389,31 @@ export class TripsService {
     if (!trip) {
       // Не создаём «сиротскую» поездку из запуска без стабильного ключа группы.
       // startParam ("c<chatId>") приходит только с кнопки-ссылки из группового
-      // чата; telegramChatId — при запуске из самого чата. Запуск без них
+      // чата; chat — при запуске из самого чата. Запуск без них
       // (web_app-кнопка из лички, Menu Button, голый URL приложения) не привязан
       // ни к какой поездке, и chatInstance у него свой — иначе пользователь
       // молча получал бы новую пустую поездку вместо общей.
-      const hasGroupKey = !!dto.startParam || dto.telegramChatId !== undefined;
-      if (!hasGroupKey) {
+      if (launch.chatId === undefined) {
         throw new ConflictException(
           'Откройте приложение кнопкой «Открыть CharterSplit» из группового чата поездки.',
         );
       }
+      await this.assertChatMembership(
+        {
+          alreadyMember: false,
+          claimsPlaceholder: false,
+          chatIdSource: launch.chatIdSource,
+        },
+        launch.chatId,
+        user,
+      );
       trip = await this.prisma.$transaction(async (tx) => {
         const created = await tx.trip.create({
           data: {
-            telegramChatId:
-              dto.telegramChatId !== undefined ? BigInt(dto.telegramChatId) : null,
-            chatInstance: dto.chatInstance ?? null,
-            startParam: dto.startParam ?? null,
-            title: dto.title?.trim() || 'Поездка',
+            telegramChatId: BigInt(launch.chatId!),
+            chatInstance: launch.chatInstance ?? null,
+            startParam: launch.startParam ?? null,
+            title: dto.title?.trim() || DEFAULT_TRIP_TITLE,
             currency: dto.currency ?? 'RUB',
             settings: { create: {} },
             members: {
@@ -421,17 +439,40 @@ export class TripsService {
         return created;
       });
     } else {
+      const found = trip;
       // Гарантируем членство открывшего пользователя.
       const existing = await this.prisma.tripMember.findFirst({
-        where: { tripId: trip.id, userId: user.id },
+        where: { tripId: found.id, userId: user.id },
       });
+      // Заглушка, добавленная по @username, привязывается к аккаунту.
+      const uname = user.username?.toLowerCase() ?? null;
+      const placeholder =
+        !existing && uname
+          ? await this.prisma.tripMember.findFirst({
+              where: { tripId: found.id, userId: null, telegramUsername: uname },
+            })
+          : null;
+      if (!existing && launch.chatId !== undefined) {
+        // Поездка могла переехать на новый id супергруппы — проверяем по актуальному.
+        const chatId =
+          found.telegramChatId !== null ? Number(found.telegramChatId) : launch.chatId;
+        await this.assertChatMembership(
+          {
+            alreadyMember: false,
+            claimsPlaceholder: !!placeholder,
+            chatIdSource: launch.chatIdSource,
+          },
+          chatId,
+          user,
+        );
+      }
       await this.prisma.$transaction(async (tx) => {
         // Поездка, созданная ботом от группы, не имеет владельца —
         // первый открывший приложение становится OWNER (даже если его
         // запись уже была создана пассивно из сообщений чата).
         const hasOwner =
           (await tx.tripMember.count({
-            where: { tripId: trip!.id, role: MemberRole.OWNER },
+            where: { tripId: found.id, role: MemberRole.OWNER },
           })) > 0;
         if (existing) {
           if (!hasOwner) {
@@ -442,14 +483,6 @@ export class TripsService {
           }
           return;
         }
-        // Заглушка, добавленная по @username, привязывается к аккаунту.
-        const uname = user.username?.toLowerCase() ?? null;
-        const placeholder = uname
-          ? await tx.tripMember.findFirst({
-              where: { tripId: trip!.id, userId: null, telegramUsername: uname },
-            })
-          : null;
-        const role = hasOwner ? MemberRole.MEMBER : MemberRole.OWNER;
         const m = placeholder
           ? await tx.tripMember.update({
               where: { id: placeholder.id },
@@ -461,15 +494,15 @@ export class TripsService {
             })
           : await tx.tripMember.create({
               data: {
-                tripId: trip!.id,
+                tripId: found.id,
                 userId: user.id,
                 displayName: displayNameOf(user),
-                role,
+                role: hasOwner ? MemberRole.MEMBER : MemberRole.OWNER,
               },
             });
         await this.history.record(
           {
-            tripId: trip!.id,
+            tripId: found.id,
             actorUserId: user.id,
             action: placeholder
               ? HistoryAction.MEMBER_UPDATED
@@ -488,6 +521,21 @@ export class TripsService {
     }
 
     return this.getById(trip.id, user);
+  }
+
+  /** Бросает 403, если по правилам нужна проверка членства в чате и она не пройдена. */
+  private async assertChatMembership(
+    opts: Parameters<typeof needsMembershipCheck>[0],
+    chatId: number,
+    user: User,
+  ): Promise<void> {
+    if (!needsMembershipCheck(opts)) return;
+    const ok = await this.membership.isMember(chatId, Number(user.telegramUserId));
+    if (ok === false) {
+      throw new ForbiddenException(
+        'Вы не состоите в групповом чате этой поездки. Попросите участников добавить вас в чат.',
+      );
+    }
   }
 
   async getById(id: string, user: User) {

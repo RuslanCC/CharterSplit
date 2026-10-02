@@ -7,9 +7,11 @@ import {
   IsOptional,
   IsString,
   Length,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
+import { MAX_MINOR } from '../common/money';
 
 /** Соответствие имени участника из CSV участнику поездки.
  *  memberId — существующий участник; guestName — создать гостя с этим именем. */
@@ -35,6 +37,8 @@ export class ImportNetDto {
   csvName!: string;
 
   @IsInt()
+  @Min(-MAX_MINOR)
+  @Max(MAX_MINOR)
   amount!: number;
 }
 
@@ -53,6 +57,7 @@ export class ImportRowDto {
 
   @IsInt()
   @Min(1)
+  @Max(MAX_MINOR)
   cost!: number; // минорные единицы
 
   @IsString()

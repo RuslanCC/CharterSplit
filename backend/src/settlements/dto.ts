@@ -1,5 +1,5 @@
 import { IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { MAX_MINOR } from '../expenses/dto';
+import { MAX_MINOR } from '../common/money';
 
 export class CreateSettlementDto {
   @IsString()

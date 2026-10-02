@@ -16,9 +16,7 @@ function NewExpenseForm() {
     <div>
       <PageHeader title="Новый расход" />
       <ExpenseForm
-        initialDescription={
-          searchParams.get('desc') ?? searchParams.get('cat') ?? ''
-        }
+        initialDescription={searchParams.get('desc') ?? searchParams.get('cat') ?? ''}
         initialCategory={searchParams.get('cat') ?? undefined}
         onSubmit={async (payload) => {
           await api.post(`/trips/${trip.id}/expenses`, payload);

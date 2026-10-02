@@ -12,11 +12,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+/** Человекочитаемый текст ошибки для показа в UI. */
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const initData = getInitDataRaw();
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -28,13 +29,17 @@ async function request<T>(
   });
 
   if (!res.ok) {
+    // initData живёт ограниченное время (INIT_DATA_EXPIRES_IN на бэкенде).
+    if (res.status === 401) {
+      throw new ApiError(401, 'Сессия истекла — закройте и снова откройте приложение.');
+    }
     let message = `HTTP ${res.status}`;
     try {
-      const data = await res.json();
-      message = (data as any)?.message ?? message;
-      if (Array.isArray(message)) message = message.join(', ');
+      const data = (await res.json()) as { message?: string | string[] };
+      if (Array.isArray(data.message)) message = data.message.join(', ');
+      else if (data.message) message = data.message;
     } catch {
-      /* ignore */
+      /* тело не JSON — оставляем HTTP-статус */
     }
     throw new ApiError(res.status, message);
   }

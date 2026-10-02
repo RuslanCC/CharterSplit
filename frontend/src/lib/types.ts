@@ -141,7 +141,7 @@ export interface HistoryItem {
   action: string;
   entityType: string;
   entityId: string | null;
-  payload: any;
+  payload: { description?: string; amount?: number; [key: string]: unknown } | null;
   createdAt: string;
   /** Имя автора в этой поездке (может быть переименовано); null — автор не участник. */
   actorName?: string | null;

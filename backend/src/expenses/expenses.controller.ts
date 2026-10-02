@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ExpensesService } from './expenses.service';

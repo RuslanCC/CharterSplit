@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ArrowRight, Check, Trash2 } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { formatMoney, formatDate, parseMoney } from '@/lib/format';
 import { confirmDialog, haptic } from '@/lib/telegram';
@@ -30,6 +30,7 @@ export default function BalancesPage() {
   const [toMemberId, setToMemberId] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const activeMembers = trip.members.filter((m) => m.isActive);
 
@@ -42,6 +43,7 @@ export default function BalancesPage() {
     )
       return;
     setBusy(true);
+    setActionError(null);
     try {
       await api.post(`/trips/${trip.id}/settlements`, {
         fromMemberId: t.fromMemberId,
@@ -50,6 +52,9 @@ export default function BalancesPage() {
       });
       haptic('success');
       reload();
+    } catch (e) {
+      haptic('error');
+      setActionError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -57,13 +62,16 @@ export default function BalancesPage() {
 
   async function removeSettlement(id: string) {
     if (busy) return;
-    if (!(await confirmDialog('Удалить погашение? Долг вернётся в расчёты.')))
-      return;
+    if (!(await confirmDialog('Удалить погашение? Долг вернётся в расчёты.'))) return;
     setBusy(true);
+    setActionError(null);
     try {
       await api.delete(`/trips/${trip.id}/settlements/${id}`);
       haptic('success');
       reload();
+    } catch (e) {
+      haptic('error');
+      setActionError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -99,20 +107,17 @@ export default function BalancesPage() {
       reload();
     } catch (e) {
       haptic('error');
-      setFormError(e instanceof Error ? e.message : 'Не удалось сохранить');
+      setFormError(errorMessage(e));
     } finally {
       setBusy(false);
     }
   }
 
   const myMember = trip.members.find((m) => m.userId === userId);
-  const my = myMember
-    ? data?.members.find((b) => b.memberId === myMember.id)
-    : undefined;
+  const my = myMember ? data?.members.find((b) => b.memberId === myMember.id) : undefined;
   const myCovererName =
     my && my.effectiveMemberId !== my.memberId
-      ? data?.members.find((b) => b.memberId === my.effectiveMemberId)
-          ?.displayName
+      ? data?.members.find((b) => b.memberId === my.effectiveMemberId)?.displayName
       : undefined;
 
   return (
@@ -152,21 +157,20 @@ export default function BalancesPage() {
           )}
 
           <SectionTitle>Кто кому платит</SectionTitle>
+          {actionError && (
+            <div className="mb-2 px-1 text-sm text-destructive">{actionError}</div>
+          )}
           <Card>
-            {data.transfers.length === 0 && (
-              <EmptyState>Все рассчитались 🎉</EmptyState>
-            )}
-            {data.transfers.map((t, i) => (
-              <CardRow key={i} className="gap-3">
+            {data.transfers.length === 0 && <EmptyState>Все рассчитались 🎉</EmptyState>}
+            {data.transfers.map((t) => (
+              <CardRow key={`${t.fromMemberId}-${t.toMemberId}`} className="gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-[15px]">
                     <span className="truncate font-medium text-destructive">
                       {t.fromName}
                     </span>
                     <ArrowRight size={15} className="shrink-0 text-hint" />
-                    <span className="truncate font-medium text-positive">
-                      {t.toName}
-                    </span>
+                    <span className="truncate font-medium text-positive">{t.toName}</span>
                   </div>
                   <div className="mt-0.5 font-semibold">
                     {formatMoney(t.amount, trip.currency)}
@@ -188,9 +192,7 @@ export default function BalancesPage() {
           <div className="mt-3">
             {formOpen ? (
               <Card className="p-4">
-                <div className="mb-3 text-sm font-medium">
-                  Записать погашение
-                </div>
+                <div className="mb-3 text-sm font-medium">Записать погашение</div>
                 <div className="space-y-3">
                   <div>
                     <Label>Кто заплатил (должник)</Label>
@@ -249,11 +251,7 @@ export default function BalancesPage() {
                 </div>
               </Card>
             ) : (
-              <Button
-                variant="secondary"
-                block
-                onClick={() => setFormOpen(true)}
-              >
+              <Button variant="secondary" block onClick={() => setFormOpen(true)}>
                 Записать погашение
               </Button>
             )}
@@ -267,9 +265,7 @@ export default function BalancesPage() {
                   <CardRow key={s.id}>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">
-                          {s.fromName}
-                        </span>
+                        <span className="truncate font-medium">{s.fromName}</span>
                         <ArrowRight size={14} className="shrink-0 text-hint" />
                         <span className="truncate font-medium">{s.toName}</span>
                       </div>

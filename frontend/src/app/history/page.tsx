@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTrip } from '../providers';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { actionLabel, formatDate, formatMoney } from '@/lib/format';
 import type { HistoryItem, HistoryPage } from '@/lib/types';
 import { Card, CardRow } from '@/components/ui/card';
@@ -22,6 +22,8 @@ const ACTIONS = [
   'MEMBER_ADDED',
   'MEMBER_UPDATED',
   'MEMBER_DEACTIVATED',
+  'EXPENSES_IMPORTED',
+  'TRIP_CREATED',
   'TRIP_UPDATED',
   'SETTINGS_UPDATED',
 ];
@@ -36,35 +38,40 @@ export default function HistoryPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Номер последнего запроса: ответы устаревших запросов (смена фильтра во
+  // время «Показать ещё») отбрасываются.
+  const requestId = React.useRef(0);
+
   const load = React.useCallback(
-    async (reset: boolean) => {
+    async (fromCursor: string | null) => {
+      const id = ++requestId.current;
       setLoading(true);
       setError(null);
       const params = new URLSearchParams();
       if (action) params.set('action', action);
       if (memberId) params.set('memberId', memberId);
-      if (!reset && cursor) params.set('cursor', cursor);
+      if (fromCursor) params.set('cursor', fromCursor);
       try {
         const page = await api.get<HistoryPage>(
           `/trips/${trip.id}/history?${params.toString()}`,
         );
-        setItems((prev) => (reset ? page.items : [...prev, ...page.items]));
+        if (id !== requestId.current) return;
+        setItems((prev) => (fromCursor ? [...prev, ...page.items] : page.items));
         setCursor(page.nextCursor);
         setHasMore(!!page.nextCursor);
       } catch (e) {
-        setError((e as Error).message);
+        if (id === requestId.current) setError(errorMessage(e));
       } finally {
-        setLoading(false);
+        if (id === requestId.current) setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trip.id, action, memberId, cursor],
+    [trip.id, action, memberId],
   );
 
   React.useEffect(() => {
-    load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trip.id, action, memberId]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- загрузка при смене фильтров
+    void load(null);
+  }, [load]);
 
   return (
     <div>
@@ -90,9 +97,7 @@ export default function HistoryPage() {
 
       <div className="px-4 pb-4">
         {error && <ErrorState message={error} />}
-        {!error && items.length === 0 && !loading && (
-          <EmptyState>Записей нет</EmptyState>
-        )}
+        {!error && items.length === 0 && !loading && <EmptyState>Записей нет</EmptyState>}
         {items.length > 0 && (
           <Card>
             {items.map((h) => (
@@ -101,7 +106,7 @@ export default function HistoryPage() {
                   <div className="font-medium">{actionLabel(h.action)}</div>
                   <div className="text-xs text-hint">
                     {formatDate(h.createdAt)}
-                    {h.actorName ?? h.actor?.firstName
+                    {(h.actorName ?? h.actor?.firstName)
                       ? ` · ${h.actorName ?? h.actor?.firstName}`
                       : ''}
                     {h.payload?.description ? ` · ${h.payload.description}` : ''}
@@ -118,12 +123,7 @@ export default function HistoryPage() {
         )}
         {loading && <Loading />}
         {hasMore && !loading && (
-          <Button
-            variant="secondary"
-            block
-            className="mt-3"
-            onClick={() => load(false)}
-          >
+          <Button variant="secondary" block className="mt-3" onClick={() => load(cursor)}>
             Показать ещё
           </Button>
         )}

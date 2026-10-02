@@ -27,16 +27,13 @@ export const OTHER_CATEGORY_COLOR = '#94a3b8';
 
 /** Иконка категории; для неизвестных (например, импорт из Splitwise) — Tag. */
 export function categoryIcon(category: string): LucideIcon {
-  return (
-    EXPENSE_CATEGORIES.find((c) => c.label === category)?.icon ?? Tag
-  );
+  return EXPENSE_CATEGORIES.find((c) => c.label === category)?.icon ?? Tag;
 }
 
 /** Цвет категории; для неизвестных/пустых — нейтральный серый. */
 export function categoryColor(category: string | null | undefined): string {
   if (!category) return OTHER_CATEGORY_COLOR;
   return (
-    EXPENSE_CATEGORIES.find((c) => c.label === category)?.color ??
-    OTHER_CATEGORY_COLOR
+    EXPENSE_CATEGORIES.find((c) => c.label === category)?.color ?? OTHER_CATEGORY_COLOR
   );
 }

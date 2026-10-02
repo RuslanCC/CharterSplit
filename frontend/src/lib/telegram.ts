@@ -40,9 +40,12 @@ export interface TelegramHapticFeedback {
 
 export interface TelegramWebApp {
   initData: string;
-  initDataUnsafe: any;
+  /** Неподписанная копия initData — только для отображения, не для доверия. */
+  initDataUnsafe: { chat?: { title?: string }; [key: string]: unknown };
   themeParams: TelegramThemeParams;
   colorScheme: 'light' | 'dark';
+  /** ios / android / tdesktop / web… — `unknown` вне клиента Telegram. */
+  platform: string;
   ready: () => void;
   expand: () => void;
   onEvent: (event: string, cb: () => void) => void;
@@ -78,9 +81,7 @@ export function confirmDialog(message: string): Promise<boolean> {
   if (wa?.showConfirm) {
     return new Promise((resolve) => wa.showConfirm!(message, resolve));
   }
-  return Promise.resolve(
-    typeof window !== 'undefined' ? window.confirm(message) : true,
-  );
+  return Promise.resolve(typeof window !== 'undefined' ? window.confirm(message) : true);
 }
 
 /** Тактильный отклик (если поддерживается клиентом Telegram). */

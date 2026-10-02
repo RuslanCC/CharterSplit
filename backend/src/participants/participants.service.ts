@@ -34,8 +34,7 @@ export class ParticipantsService {
     const username = dto.telegramUsername
       ? dto.telegramUsername.replace(/^@/, '').toLowerCase()
       : null;
-    const displayName =
-      dto.displayName?.trim() || (username ? `@${username}` : '');
+    const displayName = dto.displayName?.trim() || (username ? `@${username}` : '');
     if (!displayName) {
       throw new BadRequestException('displayName or telegramUsername required');
     }
@@ -85,7 +84,15 @@ export class ParticipantsService {
     } else {
       await this.access.assertMember(tripId, user);
     }
-    await this.access.assertMemberInTrip(tripId, memberId);
+    const target = await this.access.assertMemberInTrip(tripId, memberId);
+    // Владелец не может снять роль или деактивировать сам себя — иначе поездка
+    // останется без владельца и им молча станет первый открывший приложение.
+    if (
+      target.userId === user.id &&
+      ((dto.role !== undefined && dto.role !== target.role) || dto.isActive === false)
+    ) {
+      throw new BadRequestException('you cannot demote or deactivate yourself');
+    }
     if (
       dto.displayName === undefined &&
       dto.isActive === undefined &&

@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SplitType, type User } from '@prisma/client';
+import { SplitType, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
-import { computeShares, ShareInput } from '../common/money';
+import { computeShares, MAX_MINOR, ShareInput } from '../common/money';
 import { NotifyService } from '../telegram/notify.service';
 import { CreateExpenseDto, ExpenseParticipantDto, UpdateExpenseDto } from './dto';
 
@@ -46,8 +46,11 @@ export class ExpensesService {
     const fromFund = dto.fromFund ?? false;
     // dto.amount — база (счёт без чаевых); доли считаются от базы, а в БД
     // amount хранится как итог (база + чаевые). Чаевые есть только у личных расходов.
-    const tip = fromFund ? 0 : dto.tipAmount ?? 0;
-    const shares = fromFund ? [] : this.buildShares(dto.splitType, dto.amount, dto.participants);
+    const tip = fromFund ? 0 : (dto.tipAmount ?? 0);
+    this.assertTotalFits(dto.amount, tip);
+    const shares = fromFund
+      ? []
+      : this.buildShares(dto.splitType, dto.amount, dto.participants);
 
     const expense = await this.prisma.$transaction(async (tx) => {
       const expense = await tx.expense.create({
@@ -113,7 +116,8 @@ export class ExpensesService {
     const paidByMemberId = dto.paidByMemberId ?? existing.paidByMemberId;
     // База (без чаевых): из dto.amount либо восстанавливается из хранимого итога.
     const base = dto.amount ?? existing.amount - existing.tipAmount;
-    const tip = fromFund ? 0 : dto.tipAmount ?? existing.tipAmount;
+    const tip = fromFund ? 0 : (dto.tipAmount ?? existing.tipAmount);
+    this.assertTotalFits(base, tip);
 
     const participants: ExpenseParticipantDto[] | undefined =
       dto.participants ??
@@ -237,6 +241,13 @@ export class ExpensesService {
     });
     if (count !== unique.length) {
       throw new BadRequestException('some members do not belong to this trip');
+    }
+  }
+
+  /** База + чаевые хранятся одним Int — не даём переполнить колонку. */
+  private assertTotalFits(base: number, tip: number): void {
+    if (base + tip > MAX_MINOR) {
+      throw new BadRequestException('amount with tip is too large');
     }
   }
 }

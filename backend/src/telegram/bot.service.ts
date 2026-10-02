@@ -1,13 +1,35 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, InlineKeyboard, InputFile } from 'grammy';
+import { Bot, type Context, InlineKeyboard, InputFile } from 'grammy';
+import type { Update, User as TgUser } from 'grammy/types';
 import { TripsService } from '../trips/trips.service';
 import { ExportService } from '../export/export.service';
-import { formatMoney, escapeHtml } from '../common/format';
+import { isValidBotToken } from '../common/telegram-token';
+import {
+  ADD_TO_GROUP_BUTTON,
+  BOARD_FOOTER,
+  BOT_COMMANDS,
+  GROUP_ONLY_TEXTS,
+  OPEN_APP_BUTTON,
+  PIN_MANUALLY_TEXT,
+  PRIVATE_MESSAGE_TEXT,
+  groupTripReadyText,
+  helpText,
+  renderBalanceText,
+  renderSummaryText,
+  startPrivateText,
+} from './bot-texts';
+
+type GroupChat = { id: number; type: 'group' | 'supergroup'; title: string };
+
+/** Групповой ли чат (поездка живёт только в группах). */
+function asGroupChat(chat: Context['chat']): GroupChat | null {
+  return chat && (chat.type === 'group' || chat.type === 'supergroup') ? chat : null;
+}
 
 /**
  * Телеграм-бот в режиме webhook. Устанавливает вебхук при старте и обрабатывает апдейты.
- * Единственная внешняя зависимость проекта — Telegram.
+ * Тексты сообщений — в bot-texts.ts.
  */
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -33,17 +55,25 @@ export class BotService implements OnModuleInit {
     return this.config.get<string>('PUBLIC_URL', '');
   }
 
-  private tokenLooksValid(): boolean {
-    return /^\d+:[\w-]{20,}$/.test(this.token);
+  /** Контакт для вопросов в /start и /help (например, @username); пусто — не показываем. */
+  private get supportContact(): string {
+    return this.config.get<string>('SUPPORT_CONTACT', '');
   }
 
   async onModuleInit(): Promise<void> {
-    if (!this.tokenLooksValid()) {
+    if (!isValidBotToken(this.token)) {
       this.logger.warn('TELEGRAM_BOT_TOKEN not set/invalid — bot disabled');
       return;
     }
     this.bot = new Bot(this.token);
     this.registerHandlers(this.bot);
+    // Ошибка в хендлере не должна ронять обработку вебхука: иначе Telegram
+    // получает 500 и бесконечно повторяет тот же апдейт.
+    this.bot.catch((err) => {
+      this.logger.error(
+        `update ${err.ctx.update.update_id} failed: ${(err.error as Error)?.message ?? err.error}`,
+      );
+    });
 
     try {
       await this.bot.init();
@@ -54,26 +84,20 @@ export class BotService implements OnModuleInit {
     }
 
     try {
-      await this.bot.api.setMyCommands([
-        { command: 'start', description: 'Открыть CharterSplit' },
-        { command: 'balance', description: 'Баланс поездки и взаиморасчёты' },
-        { command: 'board', description: 'Закрепляемое табло баланса (бот обновляет)' },
-        { command: 'summary', description: 'Итоги поездки' },
-        { command: 'export', description: 'Выгрузить расходы в CSV' },
-        { command: 'help', description: 'Справка о функционале и контакты' },
-      ]);
+      await this.bot.api.setMyCommands(BOT_COMMANDS);
     } catch (e) {
       this.logger.warn(`setMyCommands failed: ${(e as Error).message}`);
     }
 
     if (this.publicUrl) {
-      const url = `${this.publicUrl.replace(/\/$/, '')}/api/telegram/webhook/${this.webhookSecret}`;
+      const base = `${this.publicUrl.replace(/\/$/, '')}/api/telegram/webhook/`;
       try {
-        await this.bot.api.setWebhook(url, {
+        await this.bot.api.setWebhook(base + this.webhookSecret, {
           secret_token: this.webhookSecret || undefined,
           allowed_updates: ['message', 'callback_query', 'my_chat_member'],
         });
-        this.logger.log(`webhook set to ${url}`);
+        // URL содержит секрет — в лог только без него.
+        this.logger.log(`webhook set to ${base}***`);
       } catch (e) {
         this.logger.error(`setWebhook failed: ${(e as Error).message}`);
       }
@@ -91,151 +115,108 @@ export class BotService implements OnModuleInit {
     return `https://t.me/${this.bot!.botInfo.username}?startapp=c${chatId}`;
   }
 
-  /**
-   * Диплинк «добавить бота в группу» — открывает в Telegram выбор группы.
-   * Приложение привязано к групповому чату, поэтому в личке это главный CTA.
-   */
-  private addToGroupLink(): string {
-    return `https://t.me/${this.bot!.botInfo.username}?startgroup=true`;
-  }
-
-  /** Кнопка для лички: добавить бота в группу поездки. */
+  /** Кнопка для лички: добавить бота в группу поездки (диплинк выбора группы). */
   private addToGroupKeyboard(): InlineKeyboard {
     return new InlineKeyboard().url(
-      '➕ Добавить в группу поездки',
-      this.addToGroupLink(),
+      ADD_TO_GROUP_BUTTON,
+      `https://t.me/${this.bot!.botInfo.username}?startgroup=true`,
     );
   }
 
   /** Кнопка «открыть Mini App» для сообщений в групповом чате. */
   private openAppKeyboard(chatId: number): InlineKeyboard {
-    return new InlineKeyboard().url(
-      '🧾 Открыть CharterSplit',
-      this.miniAppLink(chatId),
-    );
+    return new InlineKeyboard().url(OPEN_APP_BUTTON, this.miniAppLink(chatId));
+  }
+
+  /**
+   * Команда, работающая только в группе: регистрирует автора и вызывает
+   * `run`; в личке отвечает подсказкой из GROUP_ONLY_TEXTS.
+   */
+  private groupCommand(
+    bot: Bot,
+    command: keyof typeof GROUP_ONLY_TEXTS,
+    run: (chat: GroupChat) => Promise<void>,
+    withAddButton = true,
+  ): void {
+    bot.command(command, async (ctx) => {
+      const chat = asGroupChat(ctx.chat);
+      if (chat) {
+        await this.registerSender(chat.id, chat.title, ctx.from);
+        await run(chat);
+        return;
+      }
+      await ctx.reply(GROUP_ONLY_TEXTS[command], {
+        reply_markup: withAddButton ? this.addToGroupKeyboard() : undefined,
+      });
+    });
   }
 
   private registerHandlers(bot: Bot): void {
     bot.command('start', async (ctx) => {
       if (ctx.chat.type === 'private') {
-        await ctx.reply(
-          '⛵️ CharterSplit — деление общих расходов в поездке.\n\n' +
-            'Приложение работает в групповом чате поездки, а не в личке.\n\n' +
-            'Как начать:\n' +
-            '1️⃣ Добавьте меня в группу вашей поездки — кнопкой ниже.\n' +
-            '2️⃣ В группе я пришлю кнопку «🧾 Открыть CharterSplit» — открывайте приложение через неё.\n' +
-            '3️⃣ Все, кто пишет в чат или открывает приложение, попадают в эту поездку автоматически.\n\n' +
-            '❓ По всем вопросам пишите @RuslanCC',
-          { reply_markup: this.addToGroupKeyboard() },
-        );
+        await ctx.reply(startPrivateText(this.supportContact), {
+          reply_markup: this.addToGroupKeyboard(),
+        });
         return;
       }
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-        await this.sendGroupTripMessage(ctx.chat.id, ctx.chat.title);
+      const chat = asGroupChat(ctx.chat);
+      if (chat) {
+        await this.registerSender(chat.id, chat.title, ctx.from);
+        await this.sendGroupTripMessage(chat.id, chat.title);
       }
     });
 
-    bot.command('balance', async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-        await this.sendBalanceMessage(ctx.chat.id, ctx.chat.title);
-        return;
-      }
-      await ctx.reply(
-        'Команда /balance работает в групповом чате поездки. ' +
-          'Добавьте меня в группу и откройте приложение кнопкой оттуда.',
-        { reply_markup: this.addToGroupKeyboard() },
-      );
-    });
-
-    bot.command('board', async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-        await this.establishBalanceBoard(ctx.chat.id, ctx.chat.title);
-        return;
-      }
-      await ctx.reply(
-        'Команда /board работает в групповом чате поездки: бот пришлёт табло баланса ' +
-          'и будет само обновлять его при каждом изменении. Закрепите это сообщение в чате.',
-      );
-    });
-
-    bot.command('summary', async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-        await this.sendSummaryMessage(ctx.chat.id, ctx.chat.title);
-        return;
-      }
-      await ctx.reply(
-        'Команда /summary работает в групповом чате поездки. ' +
-          'Добавьте меня в группу и откройте приложение кнопкой оттуда.',
-        { reply_markup: this.addToGroupKeyboard() },
-      );
-    });
-
-    bot.command('export', async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-        await this.sendExportDocument(ctx.chat.id, ctx.chat.title);
-        return;
-      }
-      await ctx.reply(
-        'Команда /export работает в групповом чате поездки — файл придёт туда же. ' +
-          'Добавьте меня в группу поездки.',
-        { reply_markup: this.addToGroupKeyboard() },
-      );
-    });
+    this.groupCommand(bot, 'balance', (c) => this.sendBalanceMessage(c.id, c.title));
+    this.groupCommand(
+      bot,
+      'board',
+      (c) => this.establishBalanceBoard(c.id, c.title),
+      false,
+    );
+    this.groupCommand(bot, 'summary', (c) => this.sendSummaryMessage(c.id, c.title));
+    this.groupCommand(bot, 'export', (c) => this.sendExportDocument(c.id, c.title));
 
     // Справка о функционале по команде /help или хэштегу #справка / #инфо / #help.
     // В группах хэштеги видны боту только с выключенным privacy mode или у админа.
-    bot.command('help', async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-      }
+    const help = async (ctx: Context) => {
+      if (!ctx.chat) return;
+      const chat = asGroupChat(ctx.chat);
+      if (chat) await this.registerSender(chat.id, chat.title, ctx.from);
       await this.sendHelpMessage(ctx.chat.id, ctx.chat.type);
-    });
-
-    bot.hears(/(?:^|\s)#(?:справка|инфо|help|помощь)\b/i, async (ctx) => {
-      if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-      }
-      await this.sendHelpMessage(ctx.chat.id, ctx.chat.type);
-    });
+    };
+    bot.command('help', help);
+    bot.hears(/(?:^|\s)#(?:справка|инфо|help|помощь)\b/i, help);
 
     // Бот добавлен в группу → создаём поездку чата и присылаем кнопку входа.
     bot.on('my_chat_member', async (ctx) => {
-      const chat = ctx.chat;
-      if (chat.type !== 'group' && chat.type !== 'supergroup') return;
+      const chat = asGroupChat(ctx.chat);
+      if (!chat) return;
       const now = ctx.myChatMember.new_chat_member.status;
       const before = ctx.myChatMember.old_chat_member.status;
-      const joined =
-        (now === 'member' || now === 'administrator') &&
-        before !== 'member' &&
-        before !== 'administrator';
-      if (!joined) return;
+      const isIn = (s: string) => s === 'member' || s === 'administrator';
+      if (!isIn(now) || isIn(before)) return;
       await this.registerSender(chat.id, chat.title, ctx.myChatMember.from);
       await this.sendGroupTripMessage(chat.id, chat.title);
     });
 
     // Сервисные сообщения о входе/выходе приходят даже при включённом privacy mode.
     bot.on('message:new_chat_members', async (ctx) => {
-      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return;
+      const chat = asGroupChat(ctx.chat);
+      if (!chat) return;
       for (const u of ctx.message.new_chat_members) {
-        if (u.is_bot) continue;
-        await this.registerSender(ctx.chat.id, ctx.chat.title, u);
+        await this.registerSender(chat.id, chat.title, u);
       }
     });
 
     bot.on('message:left_chat_member', async (ctx) => {
-      if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return;
+      const chat = asGroupChat(ctx.chat);
       const u = ctx.message.left_chat_member;
-      if (u.is_bot) return;
+      if (!chat || u.is_bot) return;
       try {
-        await this.trips.deactivateChatMember(ctx.chat.id, u.id);
+        await this.trips.deactivateChatMember(chat.id, u.id);
       } catch (e) {
         this.logger.error(
-          `deactivate member failed for chat ${ctx.chat.id}: ${(e as Error).message}`,
+          `deactivate member failed for chat ${chat.id}: ${(e as Error).message}`,
         );
       }
     });
@@ -254,21 +235,17 @@ export class BotService implements OnModuleInit {
     });
 
     bot.on('message', async (ctx) => {
-      if (ctx.chat?.type === 'private') {
-        await ctx.reply(
-          'CharterSplit работает в групповом чате поездки. ' +
-            'Добавьте меня в группу и открывайте приложение кнопкой оттуда — ' +
-            'подробнее в /start.',
-          { reply_markup: this.addToGroupKeyboard() },
-        );
+      if (ctx.chat.type === 'private') {
+        await ctx.reply(PRIVATE_MESSAGE_TEXT, {
+          reply_markup: this.addToGroupKeyboard(),
+        });
         return;
       }
       // Пассивный сбор участников: автор сообщения в группе попадает в поездку.
       // Обычные сообщения бот видит только с выключенным privacy mode
       // (BotFather → /setprivacy → Disable) или с правами администратора.
-      if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
-        await this.registerSender(ctx.chat.id, ctx.chat.title, ctx.from);
-      }
+      const chat = asGroupChat(ctx.chat);
+      if (chat) await this.registerSender(chat.id, chat.title, ctx.from);
     });
   }
 
@@ -288,13 +265,7 @@ export class BotService implements OnModuleInit {
   private async registerSender(
     chatId: number,
     chatTitle: string | undefined,
-    from?: {
-      id: number;
-      is_bot: boolean;
-      username?: string;
-      first_name: string;
-      last_name?: string;
-    },
+    from?: TgUser,
   ): Promise<void> {
     if (!from || from.is_bot) return;
     try {
@@ -312,26 +283,13 @@ export class BotService implements OnModuleInit {
   }
 
   /** Находит/создаёт поездку группы и отправляет в чат приветствие с кнопкой. */
-  private async sendGroupTripMessage(
-    chatId: number,
-    chatTitle?: string,
-  ): Promise<void> {
+  private async sendGroupTripMessage(chatId: number, chatTitle?: string): Promise<void> {
     try {
       const trip = await this.trips.ensureForGroupChat(chatId, chatTitle);
-      await this.bot!.api.sendMessage(
-        chatId,
-        `⛵️ Поездка «<b>${escapeHtml(trip.title)}</b>» готова!\n` +
-          'Нажмите кнопку, чтобы открыть общие расходы, судовую кассу и взаиморасчёты. ' +
-          'Каждый, кто напишет в чат или откроет приложение, попадёт в эту же поездку; ' +
-          'остальных можно добавить по @username на экране «Участники».',
-        {
-          parse_mode: 'HTML',
-          reply_markup: new InlineKeyboard().url(
-            '🧾 Открыть CharterSplit',
-            this.miniAppLink(chatId),
-          ),
-        },
-      );
+      await this.bot!.api.sendMessage(chatId, groupTripReadyText(trip.title), {
+        parse_mode: 'HTML',
+        reply_markup: this.openAppKeyboard(chatId),
+      });
     } catch (e) {
       this.logger.error(
         `group trip message failed for chat ${chatId}: ${(e as Error).message}`,
@@ -340,45 +298,16 @@ export class BotService implements OnModuleInit {
   }
 
   /** Отправляет справку о возможностях бота и контакт для вопросов. */
-  private async sendHelpMessage(
-    chatId: number,
-    chatType: string,
-  ): Promise<void> {
-    const lines: string[] = [
-      '⛵️ CharterSplit — деление общих расходов в поездке.',
-      '',
-      'Что умеет бот:',
-      '• Ведёт общие расходы, судовую кассу и взаиморасчёты поездки',
-      '• Автоматически добавляет участников группы в поездку',
-      '• Присылает балансы, итоги и выгрузку — прямо в чат',
-      '',
-      'Команды в групповом чате поездки:',
-      '• /balance — баланс и кто кому должен',
-      '• /board — закрепляемое табло баланса (бот сам его обновляет)',
-      '• /summary — итоги поездки',
-      '• /export — выгрузка расходов в CSV',
-      '• /help или #справка — эта справка',
-      '',
-      chatType === 'private'
-        ? 'Приложение работает в групповом чате поездки. Добавьте меня в группу — ' +
-          'там появится кнопка «🧾 Открыть CharterSplit».'
-        : 'Приложение открывается кнопкой «🧾 Открыть CharterSplit».',
-      '',
-      '❓ По всем вопросам пишите @RuslanCC',
-    ];
-
-    const keyboard =
-      chatType === 'private'
-        ? this.addToGroupKeyboard()
-        : chatType === 'group' || chatType === 'supergroup'
-          ? new InlineKeyboard().url(
-              '🧾 Открыть CharterSplit',
-              this.miniAppLink(chatId),
-            )
-          : undefined;
-
+  private async sendHelpMessage(chatId: number, chatType: string): Promise<void> {
+    const isPrivate = chatType === 'private';
+    const isGroup = chatType === 'group' || chatType === 'supergroup';
+    const keyboard = isPrivate
+      ? this.addToGroupKeyboard()
+      : isGroup
+        ? this.openAppKeyboard(chatId)
+        : undefined;
     try {
-      await this.bot!.api.sendMessage(chatId, lines.join('\n'), {
+      await this.bot!.api.sendMessage(chatId, helpText(isPrivate, this.supportContact), {
         reply_markup: keyboard,
       });
     } catch (e) {
@@ -388,63 +317,13 @@ export class BotService implements OnModuleInit {
     }
   }
 
-  /** Собирает HTML-текст сводки балансов: расходы, касса, балансы, взаиморасчёты. */
-  private renderBalanceText(data: {
-    trip: { title: string; currency: string };
-    members: { displayName: string; balance: number }[];
-    transfers: { fromName: string; toName: string; amount: number }[];
-    fund: { balance: number };
-    totalSpent: number;
-  }): string {
-    const { trip, members, transfers, fund, totalSpent } = data;
-    const fmt = (minor: number) => formatMoney(minor, trip.currency);
-
-    const lines: string[] = [
-      `⛵️ <b>${escapeHtml(trip.title)}</b>`,
-      '',
-      `💰 Всего расходов: <b>${fmt(totalSpent)}</b>`,
-      `🏦 Касса: <b>${fmt(fund.balance)}</b>`,
-    ];
-
-    const nonZero = members.filter((m) => m.balance !== 0);
-    if (nonZero.length > 0) {
-      lines.push('', '<b>Балансы</b>');
-      for (const m of nonZero) {
-        const dot = m.balance > 0 ? '🟢' : '🔴';
-        const sign = m.balance > 0 ? '+' : '';
-        lines.push(
-          `${dot} ${escapeHtml(m.displayName)}: <b>${sign}${fmt(m.balance)}</b>`,
-        );
-      }
-    }
-
-    lines.push('', '<b>Взаиморасчёты</b>');
-    if (transfers.length === 0) {
-      lines.push('Все рассчитаны, долгов нет 🎉');
-    } else {
-      for (const t of transfers) {
-        lines.push(
-          `• ${escapeHtml(t.fromName)} → ${escapeHtml(t.toName)}: <b>${fmt(t.amount)}</b>`,
-        );
-      }
-    }
-
-    return lines.join('\n');
-  }
-
   /** Отправляет в группу разовую сводку балансов (команда /balance). */
-  private async sendBalanceMessage(
-    chatId: number,
-    chatTitle?: string,
-  ): Promise<void> {
+  private async sendBalanceMessage(chatId: number, chatTitle?: string): Promise<void> {
     try {
       const data = await this.trips.balancesForGroupChat(chatId, chatTitle);
-      await this.bot!.api.sendMessage(chatId, this.renderBalanceText(data), {
+      await this.bot!.api.sendMessage(chatId, renderBalanceText(data), {
         parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard().url(
-          '🧾 Открыть CharterSplit',
-          this.miniAppLink(chatId),
-        ),
+        reply_markup: this.openAppKeyboard(chatId),
       });
     } catch (e) {
       this.logger.error(
@@ -458,19 +337,13 @@ export class BotService implements OnModuleInit {
    * последующего редактирования на месте и пытается закрепить (если бот —
    * админ с правом закрепления; иначе просит закрепить вручную).
    */
-  private async establishBalanceBoard(
-    chatId: number,
-    chatTitle?: string,
-  ): Promise<void> {
+  private async establishBalanceBoard(chatId: number, chatTitle?: string): Promise<void> {
     try {
       const data = await this.trips.balancesForGroupChat(chatId, chatTitle);
-      const text = `${this.renderBalanceText(data)}\n\n<i>🔄 Табло обновляется автоматически</i>`;
+      const text = `${renderBalanceText(data)}\n\n${BOARD_FOOTER}`;
       const msg = await this.bot!.api.sendMessage(chatId, text, {
         parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard().url(
-          '🧾 Открыть CharterSplit',
-          this.miniAppLink(chatId),
-        ),
+        reply_markup: this.openAppKeyboard(chatId),
       });
       await this.trips.setPinnedMessageId(data.trip.id, msg.message_id);
       try {
@@ -479,11 +352,7 @@ export class BotService implements OnModuleInit {
         });
       } catch {
         // Бот не админ / нет права закрепления — просим закрепить вручную.
-        await this.bot!.api.sendMessage(
-          chatId,
-          '📌 Закрепите сообщение выше — бот будет держать его актуальным. ' +
-            'Чтобы бот закреплял сам, дайте ему право «Закреплять сообщения».',
-        );
+        await this.bot!.api.sendMessage(chatId, PIN_MANUALLY_TEXT);
       }
     } catch (e) {
       this.logger.error(
@@ -504,14 +373,11 @@ export class BotService implements OnModuleInit {
       const data = await this.trips.balancesForGroupChat(chatId);
       const messageId = data.trip.pinnedMessageId;
       if (!messageId) return;
-      const text = `${this.renderBalanceText(data)}\n\n<i>🔄 Табло обновляется автоматически</i>`;
+      const text = `${renderBalanceText(data)}\n\n${BOARD_FOOTER}`;
       try {
         await this.bot.api.editMessageText(chatId, Number(messageId), text, {
           parse_mode: 'HTML',
-          reply_markup: new InlineKeyboard().url(
-            '🧾 Открыть CharterSplit',
-            this.miniAppLink(chatId),
-          ),
+          reply_markup: this.openAppKeyboard(chatId),
         });
       } catch (e) {
         const desc = (e as { description?: string }).description ?? '';
@@ -535,40 +401,12 @@ export class BotService implements OnModuleInit {
   }
 
   /** Отправляет в группу итоги поездки: суммы, число расходов, дни, топ плательщиков. */
-  private async sendSummaryMessage(
-    chatId: number,
-    chatTitle?: string,
-  ): Promise<void> {
+  private async sendSummaryMessage(chatId: number, chatTitle?: string): Promise<void> {
     try {
-      const { trip, summary } = await this.trips.summaryForGroupChat(
-        chatId,
-        chatTitle,
-      );
-      const fmt = (minor: number) => formatMoney(minor, trip.currency);
-
-      const lines: string[] = [
-        `📊 <b>Итоги «${escapeHtml(trip.title)}»</b>`,
-        '',
-        `💰 Всего потрачено: <b>${fmt(summary.totalSpent)}</b>`,
-        `👤 Лично: ${fmt(summary.spentPersonal)}`,
-        `🏦 Из кассы: ${fmt(summary.spentFromFund)}`,
-        `🧾 Расходов: ${summary.expenseCount} за ${summary.days} дн.`,
-        `📈 В среднем: ${fmt(summary.avgPerDay)} в день`,
-      ];
-
-      if (summary.perMember.length > 0) {
-        lines.push('', '<b>Кто сколько платил</b>');
-        for (const m of summary.perMember) {
-          lines.push(`• ${escapeHtml(m.displayName)}: <b>${fmt(m.paid)}</b>`);
-        }
-      }
-
-      await this.bot!.api.sendMessage(chatId, lines.join('\n'), {
+      const data = await this.trips.summaryForGroupChat(chatId, chatTitle);
+      await this.bot!.api.sendMessage(chatId, renderSummaryText(data), {
         parse_mode: 'HTML',
-        reply_markup: new InlineKeyboard().url(
-          '🧾 Открыть CharterSplit',
-          this.miniAppLink(chatId),
-        ),
+        reply_markup: this.openAppKeyboard(chatId),
       });
     } catch (e) {
       this.logger.error(
@@ -578,10 +416,7 @@ export class BotService implements OnModuleInit {
   }
 
   /** Находит/создаёт поездку группы и присылает CSV-выгрузку расходов в чат. */
-  private async sendExportDocument(
-    chatId: number,
-    chatTitle?: string,
-  ): Promise<void> {
+  private async sendExportDocument(chatId: number, chatTitle?: string): Promise<void> {
     try {
       const trip = await this.trips.ensureForGroupChat(chatId, chatTitle);
       const { filename, content } = await this.exporter.buildCsv(trip.id);
@@ -628,11 +463,7 @@ export class BotService implements OnModuleInit {
    * Отправляет текст в чат. Никогда не бросает: сбой Telegram не должен
    * ломать бизнес-операцию, из которой пришло уведомление.
    */
-  async sendToChat(
-    telegramChatId: bigint,
-    text: string,
-    html = false,
-  ): Promise<void> {
+  async sendToChat(telegramChatId: bigint, text: string, html = false): Promise<void> {
     if (!this.bot || !this.ready) {
       this.logger.warn('sendToChat skipped: bot is not ready');
       return;
@@ -654,10 +485,7 @@ export class BotService implements OnModuleInit {
    * Отправляет карточку расхода с кнопкой Mini App. Возвращает message_id
    * отправленного сообщения (для последующего редактирования) или null при сбое.
    */
-  async sendExpenseCard(
-    telegramChatId: bigint,
-    text: string,
-  ): Promise<number | null> {
+  async sendExpenseCard(telegramChatId: bigint, text: string): Promise<number | null> {
     if (!this.bot || !this.ready) {
       this.logger.warn('sendExpenseCard skipped: bot is not ready');
       return null;
@@ -706,11 +534,11 @@ export class BotService implements OnModuleInit {
   }
 
   /** Обрабатывает входящий апдейт (из webhook-контроллера). */
-  async handleUpdate(update: unknown): Promise<void> {
+  async handleUpdate(update: Update): Promise<void> {
     if (!this.bot || !this.ready) {
       this.logger.warn('update received but bot is not ready');
       return;
     }
-    await this.bot.handleUpdate(update as any);
+    await this.bot.handleUpdate(update);
   }
 }

@@ -1,7 +1,11 @@
 // Денежная логика: расчёт долей расхода и сведение взаиморасчётов.
 // Все суммы — целые минорные единицы (копейки/центы).
 
-import { SplitType } from '@prisma/client';
+import { FundTxnType, SplitType } from '@prisma/client';
+
+// Суммы хранятся в 32-битном Int (макс 2 147 483 647 минорных единиц).
+// Держим потолок с запасом, чтобы вместо переполнения БД прилетала 400.
+export const MAX_MINOR = 2_000_000_000;
 
 export interface ShareInput {
   memberId: string;
@@ -70,7 +74,7 @@ export function computeShares(
   // EQUAL
   const n = participants.length;
   const base = Math.floor(amount / n);
-  let remainder = amount - base * n;
+  const remainder = amount - base * n;
   return participants.map((p, i) => ({
     memberId: p.memberId,
     shareUnits: 1,
@@ -102,8 +106,9 @@ export interface Transfer {
 }
 
 /**
- * Сводит балансы участников (net = получил − отдал) к минимальному числу переводов.
- * Жадный алгоритм: крупнейший должник платит крупнейшему кредитору.
+ * Сводит балансы участников (net = получил − отдал) к короткому списку переводов.
+ * Жадный алгоритм: крупнейший должник платит крупнейшему кредитору — не более
+ * n−1 переводов (строгий минимум — NP-трудная задача, на практике разница мала).
  */
 export function settle(balances: Record<string, number>): Transfer[] {
   const debtors: { id: string; amt: number }[] = [];
@@ -131,4 +136,19 @@ export function settle(balances: Record<string, number>): Transfer[] {
     if (c.amt === 0) ci += 1;
   }
   return transfers;
+}
+
+/**
+ * Баланс судовой кассы: взносы − выплаты ± корректировки − расходы, оплаченные
+ * из кассы. Корректировка хранится со знаком.
+ */
+export function fundBalance(
+  txns: { type: FundTxnType; amount: number }[],
+  spentFromFund: number,
+): number {
+  let balance = 0;
+  for (const t of txns) {
+    balance += t.type === FundTxnType.PAYOUT ? -t.amount : t.amount;
+  }
+  return balance - spentFromFund;
 }

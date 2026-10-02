@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Controller,
-  Param,
-  Post,
-} from '@nestjs/common';
+import { BadRequestException, Controller, Param, Post } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AccessService } from '../common/access.service';
@@ -25,10 +20,7 @@ export class ExportController {
   ) {}
 
   @Post('send-to-chat')
-  async sendToChat(
-    @Param('tripId') tripId: string,
-    @CurrentUser() user: User,
-  ) {
+  async sendToChat(@Param('tripId') tripId: string, @CurrentUser() user: User) {
     await this.access.assertMember(tripId, user);
     const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
     if (!trip?.telegramChatId) {

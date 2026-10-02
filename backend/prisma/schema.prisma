@@ -1,4 +1,4 @@
-// CharterSplit — модель данных. Все данные хранятся только в этой БД (PostgreSQL на VPS).
+// CharterSplit — модель данных. Все данные хранятся только в этой БД (PostgreSQL).
 // Деньги — целые минорные единицы (копейки/центы), без чисел с плавающей точкой.
 
 generator client {
@@ -152,7 +152,7 @@ model FundTransaction {
   userId    String?
   user      User?       @relation("FundTxnUser", fields: [userId], references: [id])
   type      FundTxnType
-  amount    Int // всегда положительное; знак задаётся типом
+  amount    Int // CONTRIBUTION/PAYOUT — положительное (знак задаётся типом); ADJUSTMENT — со знаком
   note      String?
   createdAt DateTime    @default(now())
 

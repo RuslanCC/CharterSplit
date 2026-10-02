@@ -24,7 +24,7 @@ export class ExportService {
       this.prisma.expense.findMany({
         where: { tripId },
         orderBy: { spentAt: 'asc' },
-        include: { shares: true },
+        include: { shares: { orderBy: { id: 'asc' } } },
       }),
       this.prisma.settlement.findMany({
         where: { tripId },
@@ -57,8 +57,7 @@ export class ExportService {
           const idx = memberIndex.get(m.id)!;
           const paid = e.paidByMemberId === m.id ? e.amount : 0;
           const share =
-            (e.shares.find((s) => s.memberId === m.id)?.amount ?? 0) +
-            (tips[m.id] ?? 0);
+            (e.shares.find((s) => s.memberId === m.id)?.amount ?? 0) + (tips[m.id] ?? 0);
           const net = paid - share;
           cells[idx] = net === 0 ? '' : this.minorToDecimal(net);
         }

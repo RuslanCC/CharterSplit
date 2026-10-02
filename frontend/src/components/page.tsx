@@ -20,9 +20,7 @@ export function Loading() {
 }
 
 export function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="px-4 py-10 text-center text-destructive">{message}</div>
-  );
+  return <div className="px-4 py-10 text-center text-destructive">{message}</div>;
 }
 
 export function EmptyState({ children }: { children: React.ReactNode }) {

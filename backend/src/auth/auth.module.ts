@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
-import { TelegramAuthGuard } from './telegram-auth.guard';
 
+// Сам TelegramAuthGuard подключён глобально (APP_GUARD в AppModule).
 @Module({
   controllers: [AuthController],
-  providers: [TelegramAuthGuard],
-  exports: [TelegramAuthGuard],
 })
 export class AuthModule {}

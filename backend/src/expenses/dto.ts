@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -14,10 +15,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { SplitType } from '@prisma/client';
+import { MAX_MINOR } from '../common/money';
 
-// Суммы хранятся в 32-битном Int (макс 2 147 483 647 минорных единиц).
-// Держим потолок с запасом, чтобы вместо переполнения БД прилетала 400.
-export const MAX_MINOR = 2_000_000_000;
 const MAX_SHARE_UNITS = 1_000_000;
 
 export class ExpenseParticipantDto {
@@ -74,6 +73,7 @@ export class CreateExpenseDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayUnique((p: ExpenseParticipantDto) => p.memberId)
   @ValidateNested({ each: true })
   @Type(() => ExpenseParticipantDto)
   participants?: ExpenseParticipantDto[];
@@ -121,6 +121,7 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayUnique((p: ExpenseParticipantDto) => p.memberId)
   @ValidateNested({ each: true })
   @Type(() => ExpenseParticipantDto)
   participants?: ExpenseParticipantDto[];

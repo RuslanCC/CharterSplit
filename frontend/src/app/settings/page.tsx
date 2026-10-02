@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { ChevronRight, Download } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api, ApiError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { SplitType, TripSettings } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
@@ -23,9 +23,7 @@ export default function SettingsPage() {
   const [allowGuests, setAllowGuests] = React.useState(
     trip.settings?.allowGuestMembers ?? true,
   );
-  const [notifyChat, setNotifyChat] = React.useState(
-    trip.settings?.notifyChat ?? true,
-  );
+  const [notifyChat, setNotifyChat] = React.useState(trip.settings?.notifyChat ?? true);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -39,9 +37,7 @@ export default function SettingsPage() {
       await api.post(`/trips/${trip.id}/export/send-to-chat`);
       setExportMsg('Файл отправлен в чат поездки');
     } catch (e) {
-      setExportMsg(
-        e instanceof ApiError ? e.message : (e as Error).message,
-      );
+      setExportMsg(errorMessage(e));
     } finally {
       setExporting(false);
     }
@@ -63,7 +59,7 @@ export default function SettingsPage() {
       setMsg('Сохранено');
     } catch (e) {
       haptic('error');
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -103,8 +99,8 @@ export default function SettingsPage() {
             </Select>
             {currency !== trip.currency && (
               <div className="mt-1.5 text-xs text-destructive">
-                Суммы уже внесённых расходов не пересчитываются — сменится
-                только символ валюты.
+                Суммы уже внесённых расходов не пересчитываются — сменится только символ
+                валюты.
               </div>
             )}
           </div>

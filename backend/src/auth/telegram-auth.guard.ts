@@ -29,6 +29,11 @@ export class TelegramAuthGuard implements CanActivate {
     private readonly prisma: PrismaService,
   ) {
     this.botToken = this.config.get<string>('TELEGRAM_BOT_TOKEN', '');
+    // С пустым токеном ключ подписи initData общеизвестен — подделать вход
+    // смог бы кто угодно. Без токена не стартуем.
+    if (!this.botToken) {
+      throw new Error('TELEGRAM_BOT_TOKEN is required');
+    }
     this.expiresIn = Number(this.config.get('INIT_DATA_EXPIRES_IN', 3600));
   }
 
@@ -82,8 +87,8 @@ export class TelegramAuthGuard implements CanActivate {
     return true;
   }
 
-  private extractRaw(req: any): string | null {
-    const header: string | undefined = req.headers?.authorization;
+  private extractRaw(req: { headers?: { authorization?: string } }): string | null {
+    const header = req.headers?.authorization;
     if (!header) return null;
     const [scheme, ...rest] = header.split(' ');
     if (scheme?.toLowerCase() !== 'tma') return null;

@@ -10,9 +10,7 @@ export interface CoverageMember {
  * Цепочки (A→B→C) разрешаются до конца; циклы и ссылки на отсутствующих
  * участников обрываются безопасно (возвращается последний валидный id).
  */
-export function buildCoverageResolver(
-  members: CoverageMember[],
-): (id: string) => string {
+export function buildCoverageResolver(members: CoverageMember[]): (id: string) => string {
   const parent = new Map(members.map((m) => [m.id, m.coveredByMemberId]));
   return (id: string): string => {
     let cursor = id;

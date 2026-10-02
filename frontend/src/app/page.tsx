@@ -56,9 +56,7 @@ export default function OverviewPage() {
                 ((myBalance ?? 0) < 0 ? 'text-destructive' : 'text-positive')
               }
             >
-              {myBalance === undefined
-                ? '—'
-                : formatMoney(myBalance, trip.currency)}
+              {myBalance === undefined ? '—' : formatMoney(myBalance, trip.currency)}
             </div>
             <div className="mt-0.5 text-xs text-hint">
               {(myBalance ?? 0) < 0 ? 'вы должны' : 'вам должны'}
@@ -85,9 +83,7 @@ export default function OverviewPage() {
             <Link
               key={label}
               href={
-                cat
-                  ? `/expenses/new?cat=${encodeURIComponent(cat)}`
-                  : '/expenses/new'
+                cat ? `/expenses/new?cat=${encodeURIComponent(cat)}` : '/expenses/new'
               }
               className="flex flex-col items-center gap-1.5 rounded-xl bg-card py-3 text-sm font-medium active:opacity-70"
             >

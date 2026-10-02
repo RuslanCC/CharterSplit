@@ -9,11 +9,7 @@ import type { Expense } from '@/lib/types';
 import { PageHeader, Loading, ErrorState } from '@/components/page';
 import { ExpenseForm } from '@/components/expense-form';
 
-export default function EditExpensePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function EditExpensePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const { trip } = useTrip();
   const router = useRouter();

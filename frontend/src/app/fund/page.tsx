@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useTrip } from '../providers';
-import { api, ApiError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { formatMoney, formatDate, parseMoney } from '@/lib/format';
 import type { FundState, FundTxnType } from '@/lib/types';
@@ -35,8 +35,7 @@ export default function FundPage() {
   async function submit() {
     setFormError(null);
     const minor = parseMoney(amount);
-    if (!Number.isFinite(minor) || minor <= 0)
-      return setFormError('Введите сумму');
+    if (!Number.isFinite(minor) || minor <= 0) return setFormError('Введите сумму');
     setBusy(true);
     try {
       await api.post(`/trips/${trip.id}/fund/${mode}`, {
@@ -48,7 +47,7 @@ export default function FundPage() {
       setNote('');
       reload();
     } catch (e) {
-      setFormError(e instanceof ApiError ? e.message : (e as Error).message);
+      setFormError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -67,8 +66,8 @@ export default function FundPage() {
               {formatMoney(data.balance, trip.currency)}
             </div>
             <div className="mt-1 text-xs text-hint">
-              взносы {formatMoney(data.totals.contributions, trip.currency)} ·
-              выплаты {formatMoney(data.totals.payouts, trip.currency)} · расходы{' '}
+              взносы {formatMoney(data.totals.contributions, trip.currency)} · выплаты{' '}
+              {formatMoney(data.totals.payouts, trip.currency)} · расходы{' '}
               {formatMoney(data.totals.spentFromFund, trip.currency)}
             </div>
           </Card>
@@ -119,9 +118,7 @@ export default function FundPage() {
                 />
               </div>
             </div>
-            {formError && (
-              <div className="text-sm text-destructive">{formError}</div>
-            )}
+            {formError && <div className="text-sm text-destructive">{formError}</div>}
             <Button block onClick={submit} disabled={busy}>
               {busy ? '…' : mode === 'contribute' ? 'Внести' : 'Выплатить'}
             </Button>
@@ -129,9 +126,7 @@ export default function FundPage() {
 
           <SectionTitle>Движения кассы</SectionTitle>
           <Card>
-            {data.transactions.length === 0 && (
-              <EmptyState>Движений пока нет</EmptyState>
-            )}
+            {data.transactions.length === 0 && <EmptyState>Движений пока нет</EmptyState>}
             {data.transactions.map((t) => (
               <CardRow key={t.id}>
                 <div>

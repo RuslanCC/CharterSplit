@@ -4,15 +4,10 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTrip } from '../providers';
-import { api, ApiError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
 import { confirmDialog, haptic } from '@/lib/telegram';
-import {
-  formatMoney,
-  formatDayLabel,
-  formatTime,
-  SPLIT_LABELS,
-} from '@/lib/format';
+import { formatMoney, formatDayLabel, formatTime, SPLIT_LABELS } from '@/lib/format';
 import type { Expense } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/category-badge';
@@ -30,7 +25,8 @@ export default function ExpensesPage() {
   // Список уже отсортирован по spentAt desc — сворачиваем в группы по дням.
   const dayGroups = useMemo(() => {
     if (!data) return [];
-    const groups: { key: string; label: string; subtotal: number; items: Expense[] }[] = [];
+    const groups: { key: string; label: string; subtotal: number; items: Expense[] }[] =
+      [];
     for (const e of data) {
       const d = new Date(e.spentAt);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -61,7 +57,7 @@ export default function ExpensesPage() {
       reload();
     } catch (e) {
       haptic('error');
-      setActionError(e instanceof ApiError ? e.message : (e as Error).message);
+      setActionError(errorMessage(e));
     } finally {
       setBusyId(null);
     }
@@ -99,16 +95,12 @@ export default function ExpensesPage() {
                 <CardRow key={e.id}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-medium">
-                        {e.description}
-                      </span>
+                      <span className="truncate font-medium">{e.description}</span>
                       {e.category && <CategoryBadge category={e.category} />}
                     </div>
                     <div className="text-xs text-hint">
                       {formatTime(e.spentAt)} · {e.paidByMember?.displayName}
-                      {e.fromFund
-                        ? ' · из кассы'
-                        : ` · ${SPLIT_LABELS[e.splitType]}`}
+                      {e.fromFund ? ' · из кассы' : ` · ${SPLIT_LABELS[e.splitType]}`}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">

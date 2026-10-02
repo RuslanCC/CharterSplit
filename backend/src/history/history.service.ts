@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { HistoryActionType } from '../common/history-actions';
+import type { HistoryQueryDto } from './dto';
 
 export interface RecordInput {
   tripId: string;
@@ -12,15 +13,6 @@ export interface RecordInput {
   payload?: Prisma.InputJsonValue;
 }
 
-export interface HistoryQuery {
-  cursor?: string;
-  take?: number;
-  action?: string;
-  memberId?: string; // фильтр по участнику (по actor или связанной сущности через payload недоступен — фильтруем по actorUserId участника)
-  from?: string; // ISO date
-  to?: string; // ISO date
-}
-
 @Injectable()
 export class HistoryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,10 +21,7 @@ export class HistoryService {
    * Записывает операцию в историю. Принимает опциональный транзакционный клиент,
    * чтобы аудит писался в той же транзакции, что и само действие.
    */
-  async record(
-    input: RecordInput,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
+  async record(input: RecordInput, tx?: Prisma.TransactionClient): Promise<void> {
     const client = tx ?? this.prisma;
     await client.operationHistory.create({
       data: {
@@ -47,7 +36,7 @@ export class HistoryService {
   }
 
   /** Лента истории поездки с фильтрами и cursor-пагинацией. */
-  async list(tripId: string, q: HistoryQuery) {
+  async list(tripId: string, q: HistoryQueryDto) {
     const take = Math.min(Math.max(Number(q.take) || 30, 1), 100);
 
     const where: Prisma.OperationHistoryWhereInput = { tripId };
@@ -68,7 +57,8 @@ export class HistoryService {
 
     const items = await this.prisma.operationHistory.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      // id — тай-брейкер: при равных createdAt курсорная пагинация не теряет строк.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: take + 1,
       ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: {
@@ -99,7 +89,7 @@ export class HistoryService {
     return {
       items: page.map((i) => ({
         ...i,
-        actorName: i.actorUserId ? nameByUserId.get(i.actorUserId) ?? null : null,
+        actorName: i.actorUserId ? (nameByUserId.get(i.actorUserId) ?? null) : null,
       })),
       nextCursor: hasMore ? page[page.length - 1].id : null,
     };

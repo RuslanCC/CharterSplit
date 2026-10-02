@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { categoryColor, OTHER_CATEGORY_COLOR } from '@/lib/categories';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import type { Expense } from '@/lib/types';
 
 // Накопительный график всех трат во времени: каждый расход поднимает линию
@@ -12,7 +12,11 @@ const W = 320;
 const H = 150;
 const PAD = 8;
 
-const dayKey = (iso: string) => iso.slice(0, 10);
+// Граница дня — по локальному времени, как и группировка в списке расходов.
+const dayKey = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
 
 const fmtDay = (iso: string) => {
   try {
@@ -22,19 +26,6 @@ const fmtDay = (iso: string) => {
     }).format(new Date(iso));
   } catch {
     return iso.slice(0, 10);
-  }
-};
-
-const fmtDateTime = (iso: string) => {
-  try {
-    return new Intl.DateTimeFormat('ru-RU', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
   }
 };
 
@@ -48,9 +39,7 @@ export function SpendingChart({
   const [hover, setHover] = useState<number | null>(null);
 
   const model = useMemo(() => {
-    const sorted = [...expenses].sort((a, b) =>
-      a.spentAt.localeCompare(b.spentAt),
-    );
+    const sorted = [...expenses].sort((a, b) => a.spentAt.localeCompare(b.spentAt));
     const total = sorted.reduce((s, e) => s + e.amount, 0);
     const innerW = W - 2 * PAD;
     const innerH = H - 2 * PAD;
@@ -90,7 +79,13 @@ export function SpendingChart({
 
     // Границы дней: вертикаль там, где начинается новый день. Подписи прореживаем,
     // чтобы не наезжали друг на друга при плотном графике.
-    const days: { x: number; pct: number; label: string; line: boolean; showLabel: boolean }[] = [];
+    const days: {
+      x: number;
+      pct: number;
+      label: string;
+      line: boolean;
+      showLabel: boolean;
+    }[] = [];
     let lastLabel = -Infinity;
     sorted.forEach((e, i) => {
       if (i === 0 || dayKey(e.spentAt) !== dayKey(sorted[i - 1].spentAt)) {
@@ -202,12 +197,7 @@ export function SpendingChart({
                 strokeWidth={1}
                 strokeOpacity={0.25}
               />
-              <circle
-                cx={active.x}
-                cy={active.y}
-                r={4.5}
-                fill="var(--color-text)"
-              />
+              <circle cx={active.x} cy={active.y} r={4.5} fill="var(--color-text)" />
             </>
           )}
 
@@ -265,12 +255,9 @@ export function SpendingChart({
                   ? `${active.e.description} · из кассы`
                   : active.e.description}
               </div>
-              <div className="font-medium">
-                {formatMoney(active.e.amount, currency)}
-              </div>
+              <div className="font-medium">{formatMoney(active.e.amount, currency)}</div>
               <div className="opacity-60">
-                {fmtDateTime(active.e.spentAt)} · Σ{' '}
-                {formatMoney(active.cum, currency)}
+                {formatDate(active.e.spentAt)} · Σ {formatMoney(active.cum, currency)}
               </div>
             </div>
           </div>
@@ -279,9 +266,7 @@ export function SpendingChart({
 
       <div className="mt-3 flex items-baseline justify-between">
         <span className="text-xs text-hint">Всего потрачено</span>
-        <span className="text-xl font-bold">
-          {formatMoney(model.total, currency)}
-        </span>
+        <span className="text-xl font-bold">{formatMoney(model.total, currency)}</span>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">

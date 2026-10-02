@@ -15,13 +15,10 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
+    // telegram-web-app.js до гидратации пишет CSS-переменные темы в style <html>.
+    <html lang="ru" suppressHydrationWarning>
       <head>
         {/* Официальный Telegram Mini Apps SDK. Единственная внешняя зависимость — Telegram. */}
         <Script

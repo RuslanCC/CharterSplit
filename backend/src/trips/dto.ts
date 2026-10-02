@@ -1,35 +1,20 @@
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  Length,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 
+/** ISO 4217: три заглавные латинские буквы (RUB, EUR, USD…). */
+const CURRENCY_RE = /^[A-Z]{3}$/;
+
+/**
+ * Параметры новой поездки. Сам ключ поездки (чат) берётся только из
+ * подписанного initData, а не из тела запроса.
+ */
 export class ResolveTripDto {
-  // Telegram Chat ID (основной ключ поездки). Приходит числом из initData.chat.id.
-  @IsOptional()
-  @IsInt()
-  telegramChatId?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  chatInstance?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  startParam?: string;
-
   @IsOptional()
   @IsString()
   @Length(1, 100)
   title?: string;
 
   @IsOptional()
-  @IsString()
-  @Length(1, 8)
+  @Matches(CURRENCY_RE, { message: 'currency must be an ISO 4217 code' })
   currency?: string;
 }
 
@@ -40,7 +25,6 @@ export class UpdateTripDto {
   title?: string;
 
   @IsOptional()
-  @IsString()
-  @Length(1, 8)
+  @Matches(CURRENCY_RE, { message: 'currency must be an ISO 4217 code' })
   currency?: string;
 }
