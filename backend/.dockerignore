@@ -3,3 +3,7 @@ dist
 npm-debug.log
 .env
 *.log
+# тесты и dev-конфиги не нужны в образе
+src/**/*.spec.ts
+vitest.config.mts
+eslint.config.mjs

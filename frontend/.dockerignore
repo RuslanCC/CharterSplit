@@ -3,3 +3,7 @@ node_modules
 npm-debug.log
 .env
 *.log
+# тесты и dev-конфиги не нужны в образе (vitest/eslint — dev-зависимости монорепо)
+**/*.test.ts
+vitest.config.mts
+eslint.config.mjs

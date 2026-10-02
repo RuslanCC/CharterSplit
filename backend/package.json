@@ -6,14 +6,16 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
-    "start:prod": "node dist/main.js",
     "start:dev": "nest start --watch",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "seed:demo": "SEED_DEMO=1 ts-node prisma/seed.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -41,7 +43,6 @@
     "pino-pretty": "^11.3.0",
     "prisma": "^6.19.0",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.0"
   }
 }
