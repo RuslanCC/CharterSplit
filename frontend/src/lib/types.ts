@@ -182,3 +182,97 @@ export interface Session {
   };
   context: SessionContext;
 }
+
+// ── Админ-раздел (владелец бота) ──────────────────────────────
+
+export interface AdminNewCounts {
+  d1: number;
+  d7: number;
+  d30: number;
+}
+
+export interface AdminDailyPoint {
+  /** День в UTC, YYYY-MM-DD. */
+  day: string;
+  operations: number;
+  activeTrips: number;
+  newExpenses: number;
+}
+
+export interface AdminStats {
+  totals: { users: number; trips: number; memberships: number; expenses: number };
+  new: { users: AdminNewCounts; trips: AdminNewCounts; expenses: AdminNewCounts };
+  spentByCurrency: { currency: string; total: number; expenses: number; trips: number }[];
+  active: {
+    d7: { trips: number; users: number };
+    d30: { trips: number; users: number };
+  };
+  daily: AdminDailyPoint[];
+  generatedAt: string;
+}
+
+export type AdminTripSort = 'activity' | 'created' | 'spent';
+
+export interface AdminTripRow {
+  id: string;
+  title: string;
+  currency: string;
+  telegramChatId: string | null;
+  createdAt: string;
+  lastActivityAt: string;
+  owner: { displayName: string; username: string | null } | null;
+  /** Активные участники (включая гостей). */
+  members: number;
+  /** Активные участники с аккаунтом Telegram. */
+  users: number;
+  expenseCount: number;
+  totalSpent: number;
+}
+
+export interface AdminTripsPage {
+  items: AdminTripRow[];
+  total: number;
+}
+
+export interface AdminTripReport {
+  trip: {
+    id: string;
+    title: string;
+    currency: string;
+    telegramChatId: string | null;
+    createdAt: string;
+  };
+  members: {
+    id: string;
+    displayName: string;
+    username: string | null;
+    telegramUserId: string | null;
+    role: MemberRole;
+    isActive: boolean;
+    joinedAt: string;
+    balance: number;
+  }[];
+  summary: TripSummary;
+  transfers: Transfer[];
+  fund: { balance: number };
+  expenses: {
+    id: string;
+    description: string;
+    amount: number;
+    category: string | null;
+    spentAt: string;
+    fromFund: boolean;
+    paidBy: string;
+  }[];
+  history: {
+    id: string;
+    action: string;
+    payload: { description?: string; amount?: number; [key: string]: unknown } | null;
+    createdAt: string;
+    actor: {
+      firstName: string | null;
+      lastName: string | null;
+      username: string | null;
+    } | null;
+  }[];
+}

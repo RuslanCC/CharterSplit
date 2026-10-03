@@ -31,7 +31,31 @@ type State =
   | { phase: 'no-trip'; message: string }
   | { phase: 'ready'; trip: Trip; userId: string };
 
+/** Админ-раздел владельца бота: открывается из лички, без привязки к поездке. */
+const isAdminPath = (pathname: string) =>
+  pathname === '/admin' || pathname.startsWith('/admin/');
+
+const noopSubscribe = () => () => {};
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  React.useEffect(() => {
+    const wa = getWebApp();
+    if (!wa) return;
+    wa.ready();
+    wa.expand();
+    applyTelegramTheme();
+    const onTheme = () => applyTelegramTheme();
+    wa.onEvent('themeChanged', onTheme);
+    return () => wa.offEvent('themeChanged', onTheme);
+  }, []);
+
+  if (isAdminPath(pathname)) return <AdminShell>{children}</AdminShell>;
+  return <TripProvider>{children}</TripProvider>;
+}
+
+function TripProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>({ phase: 'loading' });
 
   const started = React.useRef(false);
@@ -62,17 +86,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       setState({ phase: 'error', message });
     }
-  }, []);
-
-  React.useEffect(() => {
-    const wa = getWebApp();
-    if (!wa) return;
-    wa.ready();
-    wa.expand();
-    applyTelegramTheme();
-    const onTheme = () => applyTelegramTheme();
-    wa.onEvent('themeChanged', onTheme);
-    return () => wa.offEvent('themeChanged', onTheme);
   }, []);
 
   React.useEffect(() => {
@@ -114,7 +127,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <TripCtx.Provider
       value={{ trip: state.trip, userId: state.userId, isOwner, reloadTrip }}
     >
-      <BackButtonManager />
+      <BackButtonManager root="/" />
       <div className="mx-auto flex min-h-screen max-w-lg flex-col">
         <main className="flex-1 pb-4">{children}</main>
         <BottomNav />
@@ -124,13 +137,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Нативная кнопка «назад» Telegram на всех экранах, кроме корневого «Обзора»
- * (там нижняя навигация — точка входа, а системная «назад» закрыла бы приложение).
+ * Оболочка админ-раздела: без резолва поездки и нижней навигации.
+ * Доступ проверяет backend (403 для не-админов) — страницы показывают это сами.
  */
-function BackButtonManager() {
+function AdminShell({ children }: { children: React.ReactNode }) {
+  // initData есть только в браузере: на сервере (и при гидратации) — «загрузка».
+  const hasInitData = React.useSyncExternalStore(
+    noopSubscribe,
+    () => !!getInitDataRaw(),
+    () => null,
+  );
+  if (hasInitData === null) return <CenterMessage title="Загрузка…" />;
+  if (!hasInitData) {
+    return (
+      <CenterMessage
+        title="Откройте в Telegram"
+        subtitle="Статистика открывается командой /admin в личке с ботом."
+      />
+    );
+  }
+  return (
+    <>
+      <BackButtonManager root="/admin" />
+      <div className="mx-auto min-h-screen max-w-lg pb-4">{children}</div>
+    </>
+  );
+}
+
+/**
+ * Нативная кнопка «назад» Telegram на всех экранах, кроме корневого
+ * (там точка входа, а системная «назад» закрыла бы приложение).
+ */
+function BackButtonManager({ root }: { root: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isRoot = pathname === '/';
+  const isRoot = pathname === root;
   useBackButton(() => router.back());
 
   React.useEffect(() => {

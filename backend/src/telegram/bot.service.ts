@@ -5,8 +5,12 @@ import type { Update, User as TgUser } from 'grammy/types';
 import { TripsService } from '../trips/trips.service';
 import { ExportService } from '../export/export.service';
 import { isValidBotToken } from '../common/telegram-token';
+import { isAdmin, parseAdminIds } from '../admin/admin-ids';
 import {
   ADD_TO_GROUP_BUTTON,
+  ADMIN_COMMAND,
+  ADMIN_OPEN_BUTTON,
+  ADMIN_TEXT,
   BOARD_FOOTER,
   BOT_COMMANDS,
   GROUP_ONLY_TEXTS,
@@ -55,6 +59,11 @@ export class BotService implements OnModuleInit {
     return this.config.get<string>('PUBLIC_URL', '');
   }
 
+  /** Владельцы инстанса с доступом к админ-разделу (ADMIN_TELEGRAM_IDS). */
+  private get adminIds(): Set<bigint> {
+    return parseAdminIds(this.config.get<string>('ADMIN_TELEGRAM_IDS', ''));
+  }
+
   /** Контакт для вопросов в /start и /help (например, @username); пусто — не показываем. */
   private get supportContact(): string {
     return this.config.get<string>('SUPPORT_CONTACT', '');
@@ -87,6 +96,17 @@ export class BotService implements OnModuleInit {
       await this.bot.api.setMyCommands(BOT_COMMANDS);
     } catch (e) {
       this.logger.warn(`setMyCommands failed: ${(e as Error).message}`);
+    }
+    // Chat-scope заменяет глобальный список для этого чата — передаём полный.
+    for (const adminId of this.adminIds) {
+      try {
+        await this.bot.api.setMyCommands([...BOT_COMMANDS, ADMIN_COMMAND], {
+          scope: { type: 'chat', chat_id: Number(adminId) },
+        });
+      } catch (e) {
+        // Админ ещё не писал боту — chat not found; меню появится после рестарта.
+        this.logger.warn(`setMyCommands for admin failed: ${(e as Error).message}`);
+      }
     }
 
     if (this.publicUrl) {
@@ -232,6 +252,23 @@ export class BotService implements OnModuleInit {
 
     bot.on('message:migrate_from_chat_id', async (ctx) => {
       await this.migrateChat(ctx.message.migrate_from_chat_id, ctx.chat.id);
+    });
+
+    // Админ-раздел Mini App. Не-админам — обычный ответ лички, команда не светится.
+    bot.command('admin', async (ctx, next) => {
+      if (ctx.chat.type !== 'private' || !isAdmin(this.adminIds, ctx.from?.id)) {
+        return next();
+      }
+      if (!this.publicUrl) {
+        await ctx.reply('PUBLIC_URL не задан — Mini App недоступен.');
+        return;
+      }
+      await ctx.reply(ADMIN_TEXT, {
+        reply_markup: new InlineKeyboard().webApp(
+          ADMIN_OPEN_BUTTON,
+          `${this.publicUrl.replace(/\/$/, '')}/admin`,
+        ),
+      });
     });
 
     bot.on('message', async (ctx) => {

@@ -16,6 +16,11 @@ export const BOT_COMMANDS = [
   { command: 'help', description: 'Справка о функционале и контакты' },
 ];
 
+/** Команда админ-раздела: видна в меню только администраторам (chat-scope). */
+export const ADMIN_COMMAND = { command: 'admin', description: 'Статистика бота (админ)' };
+export const ADMIN_OPEN_BUTTON = '📊 Открыть статистику';
+export const ADMIN_TEXT = 'Статистика использования бота и отчёты по всем поездкам.';
+
 /** Строка «По всем вопросам…» или пустой массив, если контакт не задан. */
 function supportLines(supportContact?: string): string[] {
   const contact = supportContact?.trim();

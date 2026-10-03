@@ -8,6 +8,6 @@ import { BalancesService } from './balances.service';
   imports: [HistoryModule],
   providers: [TripsService, BalancesService],
   controllers: [TripsController],
-  exports: [TripsService],
+  exports: [TripsService, BalancesService],
 })
 export class TripsModule {}

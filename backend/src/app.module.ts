@@ -17,6 +17,7 @@ import { SettingsModule } from './settings/settings.module';
 import { HistoryModule } from './history/history.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { HealthModule } from './health/health.module';
+import { AdminModule } from './admin/admin.module';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -64,6 +65,7 @@ const maskWebhookSecret = (url: string) =>
     HistoryModule,
     TelegramModule,
     HealthModule,
+    AdminModule,
   ],
   providers: [
     {
