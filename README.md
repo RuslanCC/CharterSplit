@@ -13,6 +13,11 @@
   <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 18">
 </p>
 
+<p align="center">
+  <b>Попробовать без установки:</b> добавьте <a href="https://t.me/chartersplit_bot?startgroup=true">@chartersplit_bot</a> в групповой чат поездки
+  · <a href="https://ruslancc.github.io/CharterSplit/">сайт проекта</a>
+</p>
+
 # CharterSplit
 
 **CharterSplit** — Telegram Mini App и бот для деления общих расходов в поездках и на яхтенных
