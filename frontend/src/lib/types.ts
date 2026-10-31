@@ -1,4 +1,4 @@
-export type SplitType = 'EQUAL' | 'SHARES' | 'EXACT';
+export type SplitType = 'EQUAL' | 'SHARES' | 'EXACT' | 'SELF';
 export type MemberRole = 'OWNER' | 'MEMBER';
 export type FundTxnType = 'CONTRIBUTION' | 'PAYOUT' | 'ADJUSTMENT';
 
@@ -47,6 +47,9 @@ export interface ExpenseShare {
   memberId: string;
   shareUnits: number;
   amount: number;
+  /** SELF: часть, внесённая участником сам (null — ещё не внёс). */
+  claimed: number | null;
+  member?: Member;
 }
 
 export interface Expense {
@@ -63,6 +66,8 @@ export interface Expense {
   paidByMember?: Member;
   fromFund: boolean;
   splitType: SplitType;
+  /** SELF: когда счёт закрыт (null — участники ещё вносят свои части). */
+  closedAt: string | null;
   shares: ExpenseShare[];
 }
 
@@ -117,6 +122,20 @@ export interface TripSummary {
   days: number;
   avgPerDay: number;
   perMember: { memberId: string; displayName: string; paid: number }[];
+  /** Траты по участникам: доли с чаевыми по категориям и сколько оплатил сам. */
+  memberStats: MemberStats[];
+}
+
+export interface MemberStats {
+  memberId: string;
+  displayName: string;
+  isActive: boolean;
+  /** Сколько потрачено на участника: его доли + чаевые (без расходов из кассы). */
+  consumed: number;
+  /** Сколько оплатил как плательщик (личные расходы). */
+  paid: number;
+  /** По убыванию суммы; category = null — без категории. */
+  categories: { category: string | null; amount: number }[];
 }
 
 export interface FundTransaction {

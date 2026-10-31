@@ -91,7 +91,7 @@ export default function SettingsPage() {
               onChange={(e) => setCurrency(e.target.value)}
               disabled={!isOwner}
             >
-              {['RUB', 'USD', 'EUR', 'GBP', 'TRY', 'THB'].map((c) => (
+              {['EUR', 'USD', 'RUB', 'GBP', 'TRY', 'THB'].map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>

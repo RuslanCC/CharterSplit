@@ -13,6 +13,7 @@ import {
   ADMIN_TEXT,
   BOARD_FOOTER,
   BOT_COMMANDS,
+  CLAIM_SHARE_BUTTON,
   GROUP_ONLY_TEXTS,
   OPEN_APP_BUTTON,
   PIN_MANUALLY_TEXT,
@@ -131,8 +132,9 @@ export class BotService implements OnModuleInit {
    * Работает как URL-кнопка в группах, где web_app-кнопки запрещены.
    * Требует включённого Main Mini App в BotFather.
    */
-  private miniAppLink(chatId: number): string {
-    return `https://t.me/${this.bot!.botInfo.username}?startapp=c${chatId}`;
+  private miniAppLink(chatId: number, expenseId?: string): string {
+    const param = expenseId ? `c${chatId}_e${expenseId}` : `c${chatId}`;
+    return `https://t.me/${this.bot!.botInfo.username}?startapp=${param}`;
   }
 
   /** Кнопка для лички: добавить бота в группу поездки (диплинк выбора группы). */
@@ -146,6 +148,18 @@ export class BotService implements OnModuleInit {
   /** Кнопка «открыть Mini App» для сообщений в групповом чате. */
   private openAppKeyboard(chatId: number): InlineKeyboard {
     return new InlineKeyboard().url(OPEN_APP_BUTTON, this.miniAppLink(chatId));
+  }
+
+  /**
+   * Кнопки карточки расхода. Для открытого счёта (claimExpenseId) сверху —
+   * «Внести свою часть»: диплинк сразу на экран ввода своей части.
+   */
+  private expenseCardKeyboard(chatId: number, claimExpenseId?: string): InlineKeyboard {
+    if (!claimExpenseId) return this.openAppKeyboard(chatId);
+    return new InlineKeyboard()
+      .url(CLAIM_SHARE_BUTTON, this.miniAppLink(chatId, claimExpenseId))
+      .row()
+      .url(OPEN_APP_BUTTON, this.miniAppLink(chatId));
   }
 
   /**
@@ -521,8 +535,13 @@ export class BotService implements OnModuleInit {
   /**
    * Отправляет карточку расхода с кнопкой Mini App. Возвращает message_id
    * отправленного сообщения (для последующего редактирования) или null при сбое.
+   * claimExpenseId — открытый счёт: добавляет кнопку «Внести свою часть».
    */
-  async sendExpenseCard(telegramChatId: bigint, text: string): Promise<number | null> {
+  async sendExpenseCard(
+    telegramChatId: bigint,
+    text: string,
+    claimExpenseId?: string,
+  ): Promise<number | null> {
     if (!this.bot || !this.ready) {
       this.logger.warn('sendExpenseCard skipped: bot is not ready');
       return null;
@@ -531,7 +550,7 @@ export class BotService implements OnModuleInit {
     try {
       const msg = await this.bot.api.sendMessage(chatId, text, {
         parse_mode: 'HTML',
-        reply_markup: this.openAppKeyboard(chatId),
+        reply_markup: this.expenseCardKeyboard(chatId, claimExpenseId),
       });
       return msg.message_id;
     } catch (e) {
@@ -551,13 +570,14 @@ export class BotService implements OnModuleInit {
     telegramChatId: bigint,
     messageId: number,
     text: string,
+    claimExpenseId?: string,
   ): Promise<boolean> {
     if (!this.bot || !this.ready) return false;
     const chatId = Number(telegramChatId);
     try {
       await this.bot.api.editMessageText(chatId, messageId, text, {
         parse_mode: 'HTML',
-        reply_markup: this.openAppKeyboard(chatId),
+        reply_markup: this.expenseCardKeyboard(chatId, claimExpenseId),
       });
       return true;
     } catch (e) {

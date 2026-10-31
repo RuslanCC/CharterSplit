@@ -24,6 +24,17 @@ describe('launchKeysFromInitData', () => {
     });
   });
 
+  it('диплинк на расход: ключ поездки без хвоста', () => {
+    expect(launchKeysFromInitData({ startParam: 'c-100777_eclx1abc' })).toEqual({
+      chatId: -100777,
+      chatIdSource: 'startParam',
+      startParam: 'c-100777',
+    });
+    expect(
+      launchKeysFromInitData({ chat: { id: -5 }, startParam: 'c-5_eabc' }),
+    ).toMatchObject({ chatId: -5, chatIdSource: 'chat', startParam: 'c-5' });
+  });
+
   it('без ключей группы chatId нет', () => {
     expect(launchKeysFromInitData({ chatInstance: 'x', startParam: 'promo' })).toEqual({
       chatInstance: 'x',

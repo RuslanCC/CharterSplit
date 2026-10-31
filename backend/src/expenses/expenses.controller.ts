@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ExpensesService } from './expenses.service';
-import { CreateExpenseDto, UpdateExpenseDto } from './dto';
+import { ClaimShareDto, CreateExpenseDto, UpdateExpenseDto } from './dto';
 
 @Controller('trips/:tripId/expenses')
 export class ExpensesController {
@@ -39,6 +39,18 @@ export class ExpensesController {
     @Body() dto: UpdateExpenseDto,
   ) {
     return this.expenses.update(tripId, expenseId, user, dto);
+  }
+
+  /** «Открытый счёт»: участник вносит (или убирает) свою часть. */
+  @Put(':expenseId/claims/:memberId')
+  claim(
+    @Param('tripId') tripId: string,
+    @Param('expenseId') expenseId: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: User,
+    @Body() dto: ClaimShareDto,
+  ) {
+    return this.expenses.claim(tripId, expenseId, memberId, user, dto);
   }
 
   @Delete(':expenseId')

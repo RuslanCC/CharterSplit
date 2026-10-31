@@ -57,6 +57,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 function TripProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>({ phase: 'loading' });
+  const router = useRouter();
 
   const started = React.useRef(false);
 
@@ -101,6 +102,18 @@ function TripProvider({ children }: { children: React.ReactNode }) {
     const trip = await api.get<Trip>(`/trips/${tripId}`);
     setState((s) => (s.phase === 'ready' ? { ...s, trip } : s));
   }, [tripId]);
+
+  // Диплинк «Внести свою часть» из карточки расхода: start_param
+  // "c<chatId>_e<expenseId>" → сразу экран своей части счёта (push — чтобы
+  // «назад» вёл на главную).
+  const deepLinked = React.useRef(false);
+  React.useEffect(() => {
+    if (state.phase !== 'ready' || deepLinked.current) return;
+    deepLinked.current = true;
+    const sp = getWebApp()?.initDataUnsafe?.start_param;
+    const m = typeof sp === 'string' ? sp.match(/_e([A-Za-z0-9]+)$/) : null;
+    if (m) router.push(`/expenses/${m[1]}/claim`);
+  }, [state.phase, router]);
 
   if (state.phase === 'loading') {
     return <CenterMessage title="Загрузка…" />;

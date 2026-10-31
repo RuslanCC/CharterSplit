@@ -38,7 +38,7 @@ model Trip {
   chatInstance   String?  @unique
   startParam     String?  @unique
   title          String
-  currency       String   @default("RUB")
+  currency       String   @default("EUR")
   // id закреплённого «табло баланса» в чате: бот редактирует это сообщение
   // на месте при каждом изменении. null → табло ещё не создано (команда /board).
   pinnedMessageId BigInt?
@@ -92,6 +92,7 @@ enum SplitType {
   EQUAL // поровну
   SHARES // по долям (весам)
   EXACT // точными суммами
+  SELF // «открытый счёт»: каждый вносит свою часть, остаток — поровну
 }
 
 // Расход.
@@ -111,6 +112,9 @@ model Expense {
   // хранятся без них — чаевые распределяются на этапе расчёта балансов/экспорта.
   tipAmount      Int        @default(0)
   splitType      SplitType  @default(EQUAL)
+  // SELF («открытый счёт»): пока null, участники вносят свои части сами.
+  // После закрытия доли меняются только обычным редактированием расхода.
+  closedAt       DateTime?
   // id сообщения-карточки расхода в групповом чате: бот редактирует его на месте
   // при изменении расхода. null → карточка не отправлялась (уведомления были выключены).
   chatMessageId  BigInt?
@@ -131,6 +135,9 @@ model ExpenseShare {
   member     TripMember @relation(fields: [memberId], references: [id])
   shareUnits Int        @default(1) // вес для SHARES
   amount     Int // итоговая сумма доли, минорные единицы
+  // SELF: сколько участник внёс сам (null — ещё не внёс). amount = claimed +
+  // равная доля нераспределённого остатка чека.
+  claimed    Int?
 
   @@unique([expenseId, memberId])
   @@index([memberId])

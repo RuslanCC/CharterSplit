@@ -1,12 +1,23 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { SplitType, type User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessService } from '../common/access.service';
 import { HistoryService } from '../history/history.service';
 import { HistoryAction } from '../common/history-actions';
-import { computeShares, MAX_MINOR, ShareInput } from '../common/money';
+import { computeSelfShares, computeShares, MAX_MINOR, ShareInput } from '../common/money';
+import { formatMoney } from '../common/format';
 import { NotifyService } from '../telegram/notify.service';
-import { CreateExpenseDto, ExpenseParticipantDto, UpdateExpenseDto } from './dto';
+import {
+  ClaimShareDto,
+  CreateExpenseDto,
+  ExpenseParticipantDto,
+  UpdateExpenseDto,
+} from './dto';
 
 @Injectable()
 export class ExpensesService {
@@ -30,7 +41,10 @@ export class ExpensesService {
     await this.access.assertMember(tripId, user);
     const expense = await this.prisma.expense.findFirst({
       where: { id: expenseId, tripId },
-      include: { shares: { include: { member: true } }, paidByMember: true },
+      include: {
+        shares: { include: { member: true }, orderBy: { id: 'asc' } },
+        paidByMember: true,
+      },
     });
     if (!expense) throw new NotFoundException('expense not found');
     return expense;
@@ -70,6 +84,7 @@ export class ExpensesService {
                   memberId: s.memberId,
                   shareUnits: s.shareUnits,
                   amount: s.amount,
+                  claimed: s.claimed ?? null,
                 })),
               }
             : undefined,
@@ -125,6 +140,7 @@ export class ExpensesService {
         memberId: s.memberId,
         shareUnits: s.shareUnits,
         amount: s.amount,
+        claimed: s.claimed,
       }));
 
     await this.assertMembersInTrip(tripId, [
@@ -133,6 +149,17 @@ export class ExpensesService {
     ]);
 
     const shares = fromFund ? [] : this.buildShares(splitType, base, participants);
+
+    // Закрытие «открытого счёта»; у других способов деления closedAt не нужен.
+    let closedAt: Date | null = null;
+    if (splitType === SplitType.SELF && !fromFund) {
+      closedAt =
+        dto.closed === undefined
+          ? existing.closedAt
+          : dto.closed
+            ? (existing.closedAt ?? new Date())
+            : null;
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.expenseShare.deleteMany({ where: { expenseId } });
@@ -149,12 +176,14 @@ export class ExpensesService {
           paidByMemberId,
           fromFund,
           splitType,
+          closedAt,
           shares: shares.length
             ? {
                 create: shares.map((s) => ({
                   memberId: s.memberId,
                   shareUnits: s.shareUnits,
                   amount: s.amount,
+                  claimed: s.claimed ?? null,
                 })),
               }
             : undefined,
@@ -180,6 +209,94 @@ export class ExpensesService {
     void this.notify.balanceChanged(tripId);
 
     return updated;
+  }
+
+  /**
+   * «Открытый счёт» (SELF): участник вносит свою часть (amount = null — убирает).
+   * Остаток чека пересчитывается и делится поровну между всеми участниками.
+   * Участник поездки, которого не было в расходе, добавляется в него.
+   */
+  async claim(
+    tripId: string,
+    expenseId: string,
+    memberId: string,
+    user: User,
+    dto: ClaimShareDto,
+  ) {
+    await this.access.assertMember(tripId, user);
+    await this.assertMembersInTrip(tripId, [memberId]);
+    const claimed = dto.amount ?? null;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Блокируем строку расхода: одновременные вводы пересчитывают доли по очереди.
+      await tx.$queryRaw`SELECT id FROM "Expense" WHERE id = ${expenseId} AND "tripId" = ${tripId} FOR UPDATE`;
+      const existing = await tx.expense.findFirst({
+        where: { id: expenseId, tripId },
+        include: {
+          shares: { orderBy: { id: 'asc' } },
+          trip: { select: { currency: true } },
+        },
+      });
+      if (!existing) throw new NotFoundException('expense not found');
+      if (existing.splitType !== SplitType.SELF || existing.fromFund) {
+        throw new ConflictException('В этом расходе части не вносятся по отдельности');
+      }
+      if (existing.closedAt) throw new ConflictException('Счёт уже закрыт');
+
+      const participants: ShareInput[] = existing.shares.map((s) => ({
+        memberId: s.memberId,
+        claimed: s.memberId === memberId ? claimed : s.claimed,
+      }));
+      if (!participants.some((p) => p.memberId === memberId)) {
+        participants.push({ memberId, claimed });
+      }
+
+      const base = existing.amount - existing.tipAmount;
+      const others = participants
+        .filter((p) => p.memberId !== memberId)
+        .reduce((sum, p) => sum + (p.claimed ?? 0), 0);
+      if ((claimed ?? 0) + others > base) {
+        throw new BadRequestException(
+          `Больше суммы чека: можно внести не больше ${formatMoney(base - others, existing.trip.currency)}`,
+        );
+      }
+
+      // Доли обновляем на месте (их порядок задаёт распределение остатка чаевых).
+      for (const s of computeSelfShares(base, participants)) {
+        await tx.expenseShare.upsert({
+          where: { expenseId_memberId: { expenseId, memberId: s.memberId } },
+          update: { amount: s.amount, claimed: s.claimed ?? null },
+          create: {
+            expenseId,
+            memberId: s.memberId,
+            shareUnits: 1,
+            amount: s.amount,
+            claimed: s.claimed ?? null,
+          },
+        });
+      }
+      await this.history.record(
+        {
+          tripId,
+          actorUserId: user.id,
+          action: HistoryAction.EXPENSE_SHARE_CLAIMED,
+          entityType: 'Expense',
+          entityId: expenseId,
+          payload: {
+            description: existing.description,
+            amount: claimed ?? 0,
+            memberId,
+            cleared: claimed === null,
+          },
+        },
+        tx,
+      );
+    });
+
+    void this.notify.expenseUpdated(tripId, user, expenseId);
+    void this.notify.balanceChanged(tripId);
+
+    return this.get(tripId, expenseId, user);
   }
 
   async remove(tripId: string, expenseId: string, user: User) {
@@ -226,6 +343,7 @@ export class ExpensesService {
       memberId: p.memberId,
       shareUnits: p.shareUnits,
       amount: p.amount,
+      claimed: p.claimed,
     }));
     try {
       return computeShares(splitType, amount, input);

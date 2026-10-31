@@ -104,6 +104,7 @@ const ACTION_LABELS: Record<string, string> = {
   EXPENSES_IMPORTED: 'Импорт из Splitwise',
   EXPENSE_UPDATED: 'Расход изменён',
   EXPENSE_DELETED: 'Расход удалён',
+  EXPENSE_SHARE_CLAIMED: 'Внесена своя часть счёта',
   SETTLEMENT_RECORDED: 'Долг погашен',
   SETTLEMENT_DELETED: 'Погашение удалено',
   FUND_CONTRIBUTED: 'Взнос в кассу',
@@ -120,4 +121,5 @@ export const SPLIT_LABELS: Record<string, string> = {
   EQUAL: 'Поровну',
   SHARES: 'По долям',
   EXACT: 'Точные суммы',
+  SELF: 'Каждый сам',
 };

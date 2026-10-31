@@ -22,8 +22,18 @@ export interface ExpensePayload {
   paidByMemberId: string;
   fromFund: boolean;
   splitType: SplitType;
-  participants?: { memberId: string; shareUnits?: number; amount?: number }[];
+  participants?: {
+    memberId: string;
+    shareUnits?: number;
+    amount?: number;
+    claimed?: number | null;
+  }[];
+  /** SELF: закрыть счёт (только при правке). */
+  closed?: boolean;
 }
+
+/** Категория, для которой по умолчанию предлагается «открытый счёт». */
+const SELF_SPLIT_CATEGORY = 'Ресторан';
 
 interface ExpenseFormProps {
   /** Существующий расход — режим редактирования (префилл всех полей). */
@@ -81,9 +91,13 @@ export function ExpenseForm({
       '',
   );
   const [fromFund, setFromFund] = React.useState(initial?.fromFund ?? false);
+  const defaultSplit = trip.settings?.defaultSplit ?? 'EQUAL';
   const [splitType, setSplitType] = React.useState<SplitType>(
-    initial?.splitType ?? trip.settings?.defaultSplit ?? 'EQUAL',
+    initial?.splitType ??
+      (initialCategory === SELF_SPLIT_CATEGORY ? 'SELF' : defaultSplit),
   );
+  // Способ деления выбран вручную — смена категории его больше не трогает.
+  const [splitTouched, setSplitTouched] = React.useState(!!initial);
   const [selected, setSelected] = React.useState<Record<string, boolean>>(() =>
     initial && !initial.fromFund
       ? Object.fromEntries(
@@ -103,6 +117,17 @@ export function ExpenseForm({
         )
       : {},
   );
+  // SELF: части, уже внесённые участниками (пусто — ещё не внёс).
+  const [claimedIn, setClaimedIn] = React.useState<Record<string, string>>(() =>
+    initial?.splitType === 'SELF'
+      ? Object.fromEntries(
+          initial.shares
+            .filter((s) => s.claimed !== null)
+            .map((s) => [s.memberId, moneyToInput(s.claimed!)]),
+        )
+      : {},
+  );
+  const [closed, setClosed] = React.useState(!!initial?.closedAt);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const inTelegram = useIsTelegram();
@@ -118,6 +143,22 @@ export function ExpenseForm({
   const amountMinor = exactAuto ? exactSum : parseMoney(amount);
   const tipMinor = fromFund ? 0 : parseMoney(tip) || 0;
 
+  const claimedOf = (memberId: string): number | null => {
+    const v = claimedIn[memberId]?.trim();
+    return v ? parseMoney(v) : null;
+  };
+  const claimedSum = members
+    .filter((m) => selected[m.id])
+    .reduce((s, m) => s + (claimedOf(m.id) || 0), 0);
+  const unclaimed = (Number.isFinite(amountMinor) ? amountMinor : 0) - claimedSum;
+
+  function chooseCategory(label: string | null) {
+    setCategory(label);
+    if (!splitTouched && !initial) {
+      setSplitType(label === SELF_SPLIT_CATEGORY ? 'SELF' : defaultSplit);
+    }
+  }
+
   async function submit() {
     setError(null);
     if (!description.trim()) return setError('Введите описание');
@@ -131,7 +172,16 @@ export function ExpenseForm({
     if (!fromFund) {
       if (chosen.length === 0) return setError('Выберите участников');
       if (splitType === 'EQUAL') participants = chosen.map((m) => ({ memberId: m.id }));
-      else if (splitType === 'SHARES')
+      else if (splitType === 'SELF') {
+        const chosenClaims = chosen.map((m) => ({
+          memberId: m.id,
+          claimed: claimedOf(m.id),
+        }));
+        if (chosenClaims.some((p) => p.claimed !== null && !(p.claimed >= 0)))
+          return setError('Проверьте суммы участников');
+        if (unclaimed < 0) return setError('Части участников больше суммы чека');
+        participants = chosenClaims;
+      } else if (splitType === 'SHARES')
         participants = chosen.map((m) => ({
           memberId: m.id,
           shareUnits: Math.max(1, Number(units[m.id] ?? '1') || 1),
@@ -154,6 +204,7 @@ export function ExpenseForm({
         fromFund,
         splitType,
         participants,
+        ...(initial && splitType === 'SELF' && !fromFund ? { closed } : {}),
       });
       haptic('success');
     } catch (e) {
@@ -182,7 +233,7 @@ export function ExpenseForm({
             <button
               key={label}
               type="button"
-              onClick={() => setCategory(label)}
+              onClick={() => chooseCategory(label)}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium',
                 category === label
@@ -196,7 +247,7 @@ export function ExpenseForm({
           ))}
           <button
             type="button"
-            onClick={() => setCategory(null)}
+            onClick={() => chooseCategory(null)}
             className={cn(
               'inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium',
               category === null
@@ -226,7 +277,9 @@ export function ExpenseForm({
         </div>
       ) : (
         <div>
-          <Label>Сумма ({trip.currency})</Label>
+          <Label>
+            {splitType === 'SELF' && !fromFund ? 'Сумма чека' : 'Сумма'} ({trip.currency})
+          </Label>
           <Input
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -280,11 +333,14 @@ export function ExpenseForm({
         <>
           <div>
             <Label>Способ деления</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['EQUAL', 'SHARES', 'EXACT'] as SplitType[]).map((t) => (
+            <div className="grid grid-cols-2 gap-2">
+              {(['EQUAL', 'SHARES', 'EXACT', 'SELF'] as SplitType[]).map((t) => (
                 <button
                   key={t}
-                  onClick={() => setSplitType(t)}
+                  onClick={() => {
+                    setSplitType(t);
+                    setSplitTouched(true);
+                  }}
                   className={cn(
                     'rounded-xl py-2 text-sm font-medium',
                     splitType === t
@@ -333,6 +389,18 @@ export function ExpenseForm({
                       className="w-16 rounded-lg border border-line bg-bg px-2 py-1 text-center text-sm"
                     />
                   )}
+                  {selected[m.id] && splitType === 'SELF' && (
+                    <input
+                      value={claimedIn[m.id] ?? ''}
+                      onChange={(e) =>
+                        setClaimedIn((c) => ({ ...c, [m.id]: e.target.value }))
+                      }
+                      inputMode="decimal"
+                      placeholder="внесёт сам"
+                      aria-label={`Часть: ${m.displayName}`}
+                      className="w-28 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm"
+                    />
+                  )}
                   {selected[m.id] && splitType === 'EXACT' && (
                     <div className="flex flex-col items-end gap-1">
                       {(exact[m.id]?.length ? exact[m.id] : ['']).map((v, i) => (
@@ -377,7 +445,32 @@ export function ExpenseForm({
                 Итого: {formatMoney(exactSum, trip.currency)}
               </div>
             )}
+            {splitType === 'SELF' && (
+              <div
+                className={cn(
+                  'mt-1.5 text-xs',
+                  unclaimed < 0 ? 'text-destructive' : 'text-hint',
+                )}
+              >
+                {unclaimed < 0
+                  ? `Части больше чека на ${formatMoney(-unclaimed, trip.currency)}`
+                  : `Не распределено: ${formatMoney(unclaimed, trip.currency)} — поделится поровну.`}{' '}
+                Каждый впишет свою часть сам — кнопкой в чате или в списке расходов.
+              </div>
+            )}
           </div>
+
+          {initial && splitType === 'SELF' && (
+            <label className="flex items-center gap-3 rounded-xl bg-card px-4 py-3">
+              <input
+                type="checkbox"
+                checked={closed}
+                onChange={(e) => setClosed(e.target.checked)}
+                className="h-5 w-5"
+              />
+              <span>Счёт закрыт — участники больше не вносят части</span>
+            </label>
+          )}
         </>
       )}
 

@@ -140,9 +140,13 @@ export class BalancesService {
         where: { tripId },
         select: {
           amount: true,
+          tipAmount: true,
+          category: true,
           fromFund: true,
           spentAt: true,
           paidByMemberId: true,
+          // Порядок долей задаёт, кому достанется остаток от чаевых — как в compute().
+          shares: { select: { memberId: true, amount: true }, orderBy: { id: 'asc' } },
         },
       }),
     ]);
@@ -155,12 +159,28 @@ export class BalancesService {
     let firstAt: Date | null = null;
     let lastAt: Date | null = null;
 
+    // Сколько потрачено на каждого участника (его доли + чаевые) по категориям.
+    // Считается по фактическому участнику, без семейного переноса.
+    const consumedByMember: Record<string, Map<string | null, number>> = {};
+    const addConsumed = (memberId: string, category: string | null, amount: number) => {
+      if (amount === 0) return;
+      const cats = (consumedByMember[memberId] ??= new Map());
+      cats.set(category, (cats.get(category) ?? 0) + amount);
+    };
+
     for (const e of expenses) {
       if (e.fromFund) {
         spentFromFund += e.amount;
       } else {
         spentPersonal += e.amount;
         paidByMember[e.paidByMemberId] = (paidByMember[e.paidByMemberId] ?? 0) + e.amount;
+        const tips = computeTipShares(
+          e.tipAmount,
+          e.shares.map((s) => s.memberId),
+        );
+        for (const s of e.shares) {
+          addConsumed(s.memberId, e.category, s.amount + (tips[s.memberId] ?? 0));
+        }
       }
       if (!firstAt || e.spentAt < firstAt) firstAt = e.spentAt;
       if (!lastAt || e.spentAt > lastAt) lastAt = e.spentAt;
@@ -186,6 +206,23 @@ export class BalancesService {
       .filter((m) => m.paid > 0)
       .sort((a, b) => b.paid - a.paid);
 
+    const memberStats = members
+      .map((m) => {
+        const categories = [...(consumedByMember[m.id] ?? new Map()).entries()]
+          .map(([category, amount]) => ({ category, amount }))
+          .sort((a, b) => b.amount - a.amount);
+        return {
+          memberId: m.id,
+          displayName: m.displayName,
+          isActive: m.isActive,
+          consumed: categories.reduce((sum, c) => sum + c.amount, 0),
+          paid: paidByMember[m.id] ?? 0,
+          categories,
+        };
+      })
+      .filter((m) => m.consumed > 0 || m.paid > 0)
+      .sort((a, b) => b.consumed - a.consumed || b.paid - a.paid);
+
     return {
       totalSpent,
       spentFromFund,
@@ -196,6 +233,7 @@ export class BalancesService {
       days,
       avgPerDay: Math.round(totalSpent / days),
       perMember,
+      memberStats,
     };
   }
 }

@@ -11,12 +11,14 @@ export interface ShareInput {
   memberId: string;
   shareUnits?: number; // для SHARES
   amount?: number; // для EXACT
+  claimed?: number | null; // для SELF: часть, внесённая участником (null — ещё не внёс)
 }
 
 export interface ComputedShare {
   memberId: string;
   shareUnits: number;
   amount: number;
+  claimed?: number | null; // только для SELF
 }
 
 /**
@@ -33,6 +35,10 @@ export function computeShares(
   }
   if (participants.length === 0) {
     throw new Error('at least one participant is required');
+  }
+
+  if (splitType === SplitType.SELF) {
+    return computeSelfShares(amount, participants);
   }
 
   if (splitType === SplitType.EXACT) {
@@ -79,6 +85,36 @@ export function computeShares(
     memberId: p.memberId,
     shareUnits: 1,
     amount: base + (i < remainder ? 1 : 0),
+  }));
+}
+
+/**
+ * «Открытый счёт» (SELF): каждый участник вносит свою часть сам, а
+ * нераспределённый остаток чека (общие блюда, ещё не внесённые части) делится
+ * поровну между всеми участниками. Сумма долей строго равна amount.
+ */
+export function computeSelfShares(
+  amount: number,
+  participants: ShareInput[],
+): ComputedShare[] {
+  const claimed = participants.map((p) => p.claimed ?? null);
+  if (claimed.some((c) => c !== null && (!Number.isInteger(c) || c < 0))) {
+    throw new Error('claimed parts must be non-negative integers (minor units)');
+  }
+  const sum = claimed.reduce<number>((s, c) => s + (c ?? 0), 0);
+  if (sum > amount) {
+    throw new Error(`claimed parts (${sum}) exceed amount (${amount})`);
+  }
+  const rest = computeShares(
+    SplitType.EQUAL,
+    amount - sum,
+    participants.map((p) => ({ memberId: p.memberId })),
+  );
+  return participants.map((p, i) => ({
+    memberId: p.memberId,
+    shareUnits: 1,
+    amount: (claimed[i] ?? 0) + rest[i].amount,
+    claimed: claimed[i],
   }));
 }
 

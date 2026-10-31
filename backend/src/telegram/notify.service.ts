@@ -9,6 +9,7 @@ const SPLIT_NOTE: Record<SplitType, string> = {
   EQUAL: 'поровну',
   SHARES: 'по долям',
   EXACT: 'точными суммами',
+  SELF: 'каждый вносит свою часть',
 };
 
 /**
@@ -34,7 +35,11 @@ export class NotifyService {
       if (!trip) return;
       const card = await this.renderExpenseCard(tripId, expenseId, actor, trip.currency);
       if (!card) return;
-      const messageId = await this.bot.sendExpenseCard(trip.telegramChatId!, card);
+      const messageId = await this.bot.sendExpenseCard(
+        trip.telegramChatId!,
+        card.text,
+        card.claimExpenseId,
+      );
       if (messageId != null) {
         await this.prisma.expense.update({
           where: { id: expenseId },
@@ -67,12 +72,17 @@ export class NotifyService {
         const ok = await this.bot.editExpenseCard(
           trip.telegramChatId!,
           Number(expense.chatMessageId),
-          card,
+          card.text,
+          card.claimExpenseId,
         );
         if (ok) return;
       }
       // Карточки не было или её нельзя отредактировать — отправляем новую.
-      const messageId = await this.bot.sendExpenseCard(trip.telegramChatId!, card);
+      const messageId = await this.bot.sendExpenseCard(
+        trip.telegramChatId!,
+        card.text,
+        card.claimExpenseId,
+      );
       if (messageId != null) {
         await this.prisma.expense.update({
           where: { id: expenseId },
@@ -87,6 +97,7 @@ export class NotifyService {
   /**
    * Собирает HTML-текст карточки расхода: сумма, кто оплатил, способ деления
    * и подробная раскладка «кто сколько должен» (с учётом чаевых).
+   * claimExpenseId — у открытого счёта: карточке нужна кнопка «Внести свою часть».
    * Возвращает null, если расход не найден.
    */
   private async renderExpenseCard(
@@ -94,7 +105,7 @@ export class NotifyService {
     expenseId: string,
     actor: User,
     currency: string,
-  ): Promise<string | null> {
+  ): Promise<{ text: string; claimExpenseId?: string } | null> {
     const expense = await this.prisma.expense.findFirst({
       where: { id: expenseId, tripId },
       include: {
@@ -116,7 +127,11 @@ export class NotifyService {
     if (expense.fromFund) {
       lines.push(`Оплатил ${payerName} · оплачено из кассы`);
       lines.push(`Добавил ${escapeHtml(await this.actorName(tripId, actor))}`);
-      return lines.join('\n');
+      return { text: lines.join('\n') };
+    }
+
+    if (expense.splitType === 'SELF') {
+      return this.renderSelfCard(expense, lines, payerName, fmt);
     }
 
     const how =
@@ -145,7 +160,69 @@ export class NotifyService {
       lines.push(`<i>вкл. чаевые ${fmt(expense.tipAmount)} поровну</i>`);
     }
     lines.push('', `<i>Добавил ${escapeHtml(await this.actorName(tripId, actor))}</i>`);
-    return lines.join('\n');
+    return { text: lines.join('\n') };
+  }
+
+  /**
+   * Карточка «открытого счёта»: кто уже внёс свою часть, сколько не распределено.
+   * Автора не пишем — карточку правит каждый, кто вносит свою часть.
+   */
+  private renderSelfCard(
+    expense: {
+      id: string;
+      amount: number;
+      tipAmount: number;
+      closedAt: Date | null;
+      shares: {
+        memberId: string;
+        amount: number;
+        claimed: number | null;
+        member: { displayName: string };
+      }[];
+    },
+    lines: string[],
+    payerName: string,
+    fmt: (minor: number) => string,
+  ): { text: string; claimExpenseId?: string } {
+    const open = expense.closedAt === null;
+    const claimedCount = expense.shares.filter((s) => s.claimed !== null).length;
+    lines.push(
+      `Оплатил ${payerName} · ${SPLIT_NOTE.SELF}` +
+        (open ? ` (внесли ${claimedCount} из ${expense.shares.length})` : ''),
+    );
+
+    const tipShares = computeTipShares(
+      expense.tipAmount,
+      expense.shares.map((s) => s.memberId),
+    );
+    const rows = expense.shares
+      .map((s) => ({
+        name: s.member.displayName,
+        claimed: s.claimed,
+        owed: s.amount + (tipShares[s.memberId] ?? 0),
+      }))
+      .sort((a, b) => b.owed - a.owed || a.name.localeCompare(b.name, 'ru'));
+
+    lines.push('', '<b>Кто сколько должен:</b>');
+    for (const r of rows) {
+      const mark = r.claimed === null ? (open ? ' · ещё не внёс' : '') : ' ✓';
+      lines.push(`• ${escapeHtml(r.name)} — ${fmt(r.owed)}${mark}`);
+    }
+
+    const base = expense.amount - expense.tipAmount;
+    const unclaimed = base - expense.shares.reduce((s, x) => s + (x.claimed ?? 0), 0);
+    const notes: string[] = [];
+    if (unclaimed > 0) notes.push(`не распределено ${fmt(unclaimed)} — поровну`);
+    if (expense.tipAmount > 0) notes.push(`чаевые ${fmt(expense.tipAmount)} поровну`);
+    if (notes.length) lines.push(`<i>${notes.join(' · ')}</i>`);
+
+    lines.push(
+      '',
+      open
+        ? '<i>Счёт открыт: каждый вносит, сколько вышло у него</i>'
+        : '<i>Счёт закрыт</i>',
+    );
+    return { text: lines.join('\n'), claimExpenseId: open ? expense.id : undefined };
   }
 
   async expenseDeleted(

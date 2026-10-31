@@ -12,6 +12,7 @@ import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Label } from '@/components/ui/input';
 import { PageHeader, Loading, ErrorState, EmptyState } from '@/components/page';
+import { MemberStatsCard } from '@/components/member-stats';
 
 export default function BalancesPage() {
   const { trip, userId } = useTrip();
@@ -332,6 +333,22 @@ export default function BalancesPage() {
               );
             })}
           </Card>
+
+          {summary.data && summary.data.memberStats.length > 0 && (
+            <>
+              <SectionTitle>Траты участников</SectionTitle>
+              <MemberStatsCard
+                stats={summary.data.memberStats}
+                currency={trip.currency}
+              />
+              {summary.data.spentFromFund > 0 && (
+                <div className="mt-1.5 px-1 text-xs text-hint">
+                  Без расходов из кассы:{' '}
+                  {formatMoney(summary.data.spentFromFund, trip.currency)}
+                </div>
+              )}
+            </>
+          )}
 
           {summary.data && summary.data.expenseCount > 0 && (
             <>

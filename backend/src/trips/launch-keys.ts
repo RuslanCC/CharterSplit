@@ -22,9 +22,13 @@ export function launchKeysFromInitData(initData: ParsedInitData | undefined): La
   if (initData?.chat?.id !== undefined && Number.isFinite(initData.chat.id)) {
     keys.chatId = initData.chat.id;
     keys.chatIdSource = 'chat';
-  } else {
-    const m = keys.startParam?.match(/^c(-?\d+)$/);
-    if (m) {
+  }
+  // Диплинк на открытый счёт: "c<chatId>_e<expenseId>". Хвост расхода — только
+  // навигация в Mini App; ключ поездки — "c<chatId>".
+  const m = keys.startParam?.match(/^c(-?\d+)(?:_e[A-Za-z0-9]+)?$/);
+  if (m) {
+    keys.startParam = `c${m[1]}`;
+    if (keys.chatId === undefined) {
       keys.chatId = Number(m[1]);
       keys.chatIdSource = 'startParam';
     }

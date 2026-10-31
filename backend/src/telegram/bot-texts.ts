@@ -4,6 +4,7 @@ import { escapeHtml, formatMoney } from '../common/format';
 // легко тестировать и править копирайт в одном месте.
 
 export const OPEN_APP_BUTTON = '🧾 Открыть CharterSplit';
+export const CLAIM_SHARE_BUTTON = '✍️ Внести свою часть';
 export const ADD_TO_GROUP_BUTTON = '➕ Добавить в группу поездки';
 export const BOARD_FOOTER = '<i>🔄 Табло обновляется автоматически</i>';
 

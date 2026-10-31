@@ -34,6 +34,21 @@ export class ExpenseParticipantDto {
   @Min(0)
   @Max(MAX_MINOR)
   amount?: number; // для EXACT (минорные единицы)
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MINOR)
+  claimed?: number | null; // для SELF: своя часть участника (null — ещё не внёс)
+}
+
+/** Своя часть в «открытом счёте» (SELF). null — убрать, доля вернётся к остатку. */
+export class ClaimShareDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MINOR)
+  amount?: number | null;
 }
 
 export class CreateExpenseDto {
@@ -117,6 +132,10 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsEnum(SplitType)
   splitType?: SplitType;
+
+  @IsOptional()
+  @IsBoolean()
+  closed?: boolean; // SELF: закрыть счёт (участники больше не вносят части сами)
 
   @IsOptional()
   @IsArray()

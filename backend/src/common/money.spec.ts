@@ -54,6 +54,46 @@ describe('computeShares', () => {
     ).toThrow(/must equal amount/);
   });
 
+  it('SELF: свои части + остаток поровну, сумма сходится', () => {
+    const shares = computeShares(SplitType.SELF, 10000, [
+      { memberId: 'a', claimed: 2500 },
+      { memberId: 'b', claimed: null },
+      { memberId: 'c', claimed: 3000 },
+    ]);
+    // Остаток 4500 делится на троих поровну.
+    expect(shares).toEqual([
+      { memberId: 'a', shareUnits: 1, amount: 4000, claimed: 2500 },
+      { memberId: 'b', shareUnits: 1, amount: 1500, claimed: null },
+      { memberId: 'c', shareUnits: 1, amount: 4500, claimed: 3000 },
+    ]);
+    expect(sum(shares)).toBe(10000);
+  });
+
+  it('SELF: никто не внёс — как поровну; всё распределено — без остатка', () => {
+    const none = computeShares(SplitType.SELF, 100, [
+      { memberId: 'a' },
+      { memberId: 'b' },
+    ]);
+    expect(none.map((s) => s.amount)).toEqual([50, 50]);
+    const all = computeShares(SplitType.SELF, 100, [
+      { memberId: 'a', claimed: 70 },
+      { memberId: 'b', claimed: 30 },
+    ]);
+    expect(all.map((s) => s.amount)).toEqual([70, 30]);
+  });
+
+  it('SELF: части больше чека отклоняются', () => {
+    expect(() =>
+      computeShares(SplitType.SELF, 100, [
+        { memberId: 'a', claimed: 80 },
+        { memberId: 'b', claimed: 30 },
+      ]),
+    ).toThrow(/exceed amount/);
+    expect(() =>
+      computeShares(SplitType.SELF, 100, [{ memberId: 'a', claimed: -1 }]),
+    ).toThrow();
+  });
+
   it('отклоняет пустой список и нецелую сумму', () => {
     expect(() => computeShares(SplitType.EQUAL, 100, [])).toThrow();
     expect(() => computeShares(SplitType.EQUAL, 10.5, [{ memberId: 'a' }])).toThrow();

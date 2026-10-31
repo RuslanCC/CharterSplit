@@ -8,7 +8,8 @@
 //   TELEGRAM_BOT_TOKEN=123:dev node scripts/dev-init-data.mjs [--dark] [--url http://localhost:3000]
 //
 // По умолчанию — владелец и чат демо-поездки из `npm run seed:demo`.
-// Переопределить: DEV_USER_ID, DEV_CHAT_ID, DEV_FIRST_NAME.
+// Переопределить: DEV_USER_ID, DEV_CHAT_ID, DEV_FIRST_NAME, DEV_START_PARAM
+// (например, c<chatId>_e<expenseId> — диплинк «Внести свою часть»).
 // Только для разработки: с настоящим токеном такой URL — рабочий вход в приложение.
 import { createHmac } from 'node:crypto';
 
@@ -33,7 +34,7 @@ const fields = {
   auth_date: String(Math.floor(Date.now() / 1000)),
   chat_instance: '-8000000000000000001',
   chat_type: 'supergroup',
-  start_param: `c${chatId}`,
+  start_param: process.env.DEV_START_PARAM ?? `c${chatId}`,
   user: JSON.stringify({
     id: userId,
     first_name: process.env.DEV_FIRST_NAME ?? 'Алексей',

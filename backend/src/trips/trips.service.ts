@@ -414,7 +414,7 @@ export class TripsService {
             chatInstance: launch.chatInstance ?? null,
             startParam: launch.startParam ?? null,
             title: dto.title?.trim() || DEFAULT_TRIP_TITLE,
-            currency: dto.currency ?? 'RUB',
+            currency: dto.currency ?? 'EUR',
             settings: { create: {} },
             members: {
               create: {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { HandCoins, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTrip } from '../providers';
 import { api, errorMessage } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
@@ -102,6 +102,17 @@ export default function ExpensesPage() {
                       {formatTime(e.spentAt)} · {e.paidByMember?.displayName}
                       {e.fromFund ? ' · из кассы' : ` · ${SPLIT_LABELS[e.splitType]}`}
                     </div>
+                    {e.splitType === 'SELF' && !e.fromFund && !e.closedAt && (
+                      <Link
+                        href={`/expenses/${e.id}/claim`}
+                        className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-link active:opacity-60"
+                      >
+                        <HandCoins size={12} />
+                        Внести свою часть ·{' '}
+                        {e.shares.filter((s) => s.claimed !== null).length}/
+                        {e.shares.length}
+                      </Link>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-semibold">
