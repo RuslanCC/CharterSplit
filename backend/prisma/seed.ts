@@ -1,5 +1,6 @@
 // Демо-данные для локальной разработки и скриншотов: поездка на яхте с
-// участниками, расходами всеми способами деления, кассой и взаиморасчётом.
+// участниками, расходами всеми способами деления (включая открытый счёт),
+// кассой и взаиморасчётом.
 //
 //   SEED_DEMO=1 npm run seed --workspace backend   (или npm run seed:demo)
 //
@@ -37,6 +38,12 @@ async function main() {
     throw new Error('seed: демо-данные не создаются при NODE_ENV=production');
   }
 
+  // Сначала записи, ссылающиеся на участников (у этих связей onDelete: Restrict),
+  // иначе каскадное удаление поездки упирается во внешние ключи.
+  const demoTrip = { trip: { telegramChatId: DEMO_CHAT_ID } };
+  await prisma.expense.deleteMany({ where: demoTrip });
+  await prisma.settlement.deleteMany({ where: demoTrip });
+  await prisma.fundTransaction.deleteMany({ where: demoTrip });
   await prisma.trip.deleteMany({ where: { telegramChatId: DEMO_CHAT_ID } });
 
   const people = [
@@ -285,6 +292,24 @@ async function main() {
       payer: alex,
       when: at(0, 11, 30),
       participants: equal(adults),
+    },
+    {
+      // «Открытый счёт»: каждый вносит свою часть сам, двое ещё не внесли.
+      description: 'Ужин в Konoba Pojoda',
+      category: 'Ресторан',
+      amount: 21_600,
+      tip: 2_000,
+      payer: alex,
+      when: at(0, 20, 45),
+      split: SplitType.SELF,
+      participants: [
+        { memberId: alex.id, claimed: 4_200 },
+        { memberId: maria.id, claimed: 3_800 },
+        { memberId: dima.id, claimed: null },
+        { memberId: olga.id, claimed: 3_500 },
+        { memberId: sergey.id, claimed: null },
+        { memberId: misha.id, claimed: 1_600 },
+      ],
     },
   ];
 

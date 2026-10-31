@@ -6,14 +6,14 @@
     <title>CharterSplit — общие расходы поездки в Telegram</title>
     <meta
       name="description"
-      content="Добавьте @chartersplit_bot в чат поездки — и делите расходы, ведите общую кассу и узнавайте, кто кому сколько должен. Без регистрации и установки."
+      content="Добавьте @chartersplit_bot в чат поездки — делите расходы, ведите общую кассу, делите счёт в ресторане «каждый за себя» и узнавайте, кто кому сколько должен. Без регистрации и установки."
     />
     <meta name="theme-color" content="#0b6fb8" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="CharterSplit — общие расходы поездки в Telegram" />
     <meta
       property="og:description"
-      content="Добавьте @chartersplit_bot в чат поездки — касса, доли, чаевые и «кто кому сколько» без таблиц и споров."
+      content="Добавьте @chartersplit_bot в чат поездки — касса, доли, чаевые, ресторан «каждый за себя» и «кто кому сколько» без таблиц и споров."
     />
     <meta
       property="og:image"
@@ -653,6 +653,12 @@
       .chat.play .msg:nth-child(5) {
         transition-delay: 2.5s;
       }
+      .chat.play .msg:nth-child(6) {
+        transition-delay: 3.2s;
+      }
+      .chat.play .msg:nth-child(7) {
+        transition-delay: 3.9s;
+      }
       .msg.me {
         justify-self: end;
         background: var(--bubble-me);
@@ -1075,8 +1081,8 @@
             </h1>
             <p class="lead">
               Добавьте бота в Telegram-группу поездки — и забудьте про таблицы, чеки в
-              заметках и споры в конце отпуска. Касса, доли, чаевые и «кто кому сколько»
-              считаются сами.
+              заметках и споры в конце отпуска. Касса, доли, чаевые, счёт в ресторане
+              «каждый за себя» и «кто кому сколько» считаются сами.
             </p>
             <div class="hero-cta">
               <a class="btn btn-tg" href="https://t.me/chartersplit_bot?startgroup=true">
@@ -1098,15 +1104,15 @@
 
           <div class="phones reveal" aria-hidden="true">
             <div class="sticker s1">
-              🧾 Ужин в&nbsp;марине<small>380 € · поровну на 6</small>
+              🍽 Ужин в&nbsp;Konoba Pojoda<small>236 € · каждый вписывает своё</small>
             </div>
             <div class="phone p1">
               <picture>
                 <source
-                  srcset="screenshots/expenses-dark.png"
+                  srcset="screenshots/claim-dark.png"
                   media="(prefers-color-scheme: dark)"
                 />
-                <img src="screenshots/expenses-light.png" alt="" />
+                <img src="screenshots/claim-light.png" alt="" />
               </picture>
             </div>
             <div class="phone p2">
@@ -1121,14 +1127,14 @@
             <div class="phone p3">
               <picture>
                 <source
-                  srcset="screenshots/balances-dark.png"
+                  srcset="screenshots/stats-dark.png"
                   media="(prefers-color-scheme: dark)"
                 />
-                <img src="screenshots/balances-light.png" alt="" />
+                <img src="screenshots/stats-light.png" alt="" />
               </picture>
             </div>
             <div class="sticker s2">
-              Ваш баланс<small class="pos">+579,92 € — вам должны</small>
+              Ваш баланс<small class="pos">+756,41 € — вам должны вернуть</small>
             </div>
           </div>
         </div>
@@ -1230,16 +1236,27 @@
                 чтобы открыть общие расходы, судовую кассу и взаиморасчёты.
                 <div class="msg-btn">🧾 Открыть CharterSplit</div>
               </div>
+              <div class="msg bot">
+                <span class="who b">CharterSplit</span>
+                💸 <b>Ужин в Konoba Pojoda</b> — <b>236,00 €</b><br />
+                Оплата: Алексей · каждый вносит свою часть
+                <div class="row"><span>• Алексей ✓</span><b>59,51 €</b></div>
+                <div class="row"><span>• Мария ✓</span><b>55,51 €</b></div>
+                <div class="row">
+                  <span>• Дмитрий · ещё не внесено</span><b>17,50 €</b>
+                </div>
+                <div class="msg-btn">✍️ Внести свою часть</div>
+              </div>
               <div class="msg me">
-                <span class="who">Марина</span>
-                Записала ужин и топливо 👌
+                <span class="who">Дмитрий</span>
+                Вписал свои 24,50 — паста и пиво 🍝
               </div>
               <div class="msg bot">
                 <span class="who b">CharterSplit</span>
                 <b>Взаиморасчёты</b>
-                <div class="row"><span>• Ольга → Алексей</span><b>249,30 €</b></div>
-                <div class="row"><span>• Сергей → Алексей</span><b>241,67 €</b></div>
-                <div class="row"><span>• Мария → Алексей</span><b>88,95 €</b></div>
+                <div class="row"><span>• Ольга → Алексей</span><b>335,29 €</b></div>
+                <div class="row"><span>• Сергей → Алексей</span><b>259,16 €</b></div>
+                <div class="row"><span>• Мария → Алексей</span><b>150,76 €</b></div>
                 <div class="msg-btn">🧾 Открыть CharterSplit</div>
               </div>
               <div class="msg me">
@@ -1273,15 +1290,15 @@
               </p>
               <div class="split-modes">
                 <span>Поровну</span><span>По долям</span><span>Точными суммами</span
-                ><span>+ чаевые</span>
+                ><span>Каждый сам</span><span>+ чаевые</span>
               </div>
             </article>
             <article class="feature reveal" style="--accent: var(--sea)">
               <div class="ico">💸</div>
               <h3>Кто кому сколько</h3>
               <p>
-                Минимум переводов вместо запутанной паутины долгов. Отметить «вернул» —
-                один тап.
+                Минимум переводов вместо запутанной паутины долгов. Возврат долга или
+                наличные в долг — записываются одним переводом.
               </p>
             </article>
             <article class="feature reveal" style="--accent: var(--tg)">
@@ -1296,8 +1313,8 @@
               <div class="ico">👨‍👩‍👧</div>
               <h3>Семьи и дети</h3>
               <p>
-                Папа платит за ребёнка, а муж за жену? Свяжите участников — их расходы
-                посчитаются вместе.
+                Родители платят за детей, супруги — друг за друга? Свяжите участников — их
+                расходы посчитаются вместе.
               </p>
             </article>
             <article class="feature reveal" style="--accent: var(--sail-red)">
@@ -1330,6 +1347,28 @@
               <p>
                 Каждое изменение сохраняется: кто, что и когда добавил или поправил.
                 Никаких «а это откуда?».
+              </p>
+            </article>
+            <article class="feature big reveal" style="--accent: var(--sail-red)">
+              <div class="ico">🍽</div>
+              <h3>Ресторан: каждый за себя</h3>
+              <p>
+                Один платит по чеку, остальные сами вписывают, сколько вышло у них, —
+                кнопкой «Внести свою часть» прямо из чата, можно по позициям. Общее вино,
+                хлеб и чаевые делятся поровну, карточка в чате обновляется после каждого
+                ввода.
+              </p>
+              <div class="split-modes">
+                <span>Внесли 4 из 6</span><span>Не распределено 60,50 €</span
+                ><span>✍️ Внести свою часть</span>
+              </div>
+            </article>
+            <article class="feature reveal" style="--accent: var(--violet)">
+              <div class="ico">📊</div>
+              <h3>Сколько потрачено на каждого</h3>
+              <p>
+                Круговая диаграмма и разбивка по категориям: сколько ушло на каждого —
+                марина, ресторан, продукты. Семья — одним сегментом.
               </p>
             </article>
           </div>
@@ -1376,7 +1415,7 @@
                 />
               </picture>
             </div>
-            <figcaption>Новый расход<small>три способа деления</small></figcaption>
+            <figcaption>Новый расход<small>четыре способа деления</small></figcaption>
           </figure>
           <figure>
             <div class="phone">
@@ -1409,6 +1448,40 @@
               </picture>
             </div>
             <figcaption>Взаиморасчёты<small>кто кому сколько платит</small></figcaption>
+          </figure>
+          <figure>
+            <div class="phone">
+              <picture>
+                <source
+                  srcset="screenshots/stats-dark.png"
+                  media="(prefers-color-scheme: dark)"
+                />
+                <img
+                  src="screenshots/stats-light.png"
+                  alt="Сколько потрачено на каждого"
+                  loading="lazy"
+                />
+              </picture>
+            </div>
+            <figcaption>Траты<small>на кого сколько ушло</small></figcaption>
+          </figure>
+          <figure>
+            <div class="phone">
+              <picture>
+                <source
+                  srcset="screenshots/claim-dark.png"
+                  media="(prefers-color-scheme: dark)"
+                />
+                <img
+                  src="screenshots/claim-light.png"
+                  alt="Моя часть счёта"
+                  loading="lazy"
+                />
+              </picture>
+            </div>
+            <figcaption>
+              Моя часть счёта<small>ресторан «каждый за себя»</small>
+            </figcaption>
           </figure>
           <figure>
             <div class="phone">
@@ -1548,6 +1621,23 @@
               <p>
                 Добавьте его гостем — он будет участвовать в расходах и расчётах наравне
                 со всеми.
+              </p>
+            </details>
+            <details class="reveal">
+              <summary>Как делить счёт в ресторане, если каждый ел своё?</summary>
+              <p>
+                Выберите способ деления «Каждый сам» (для категории «Ресторан» он
+                включается сразу) и введите сумму чека. В чате появится карточка с кнопкой
+                «Внести свою часть» — каждый впишет, сколько вышло у него. Что осталось
+                нераспределённым (вино, хлеб) и чаевые — поровну на всех.
+              </p>
+            </details>
+            <details class="reveal">
+              <summary>Где записать долг или возврат наличными?</summary>
+              <p>
+                На вкладке «Баланс» — кнопка «Записать перевод денег»: кто отдал деньги и
+                кто получил. Балансы пересчитаются, а в тратах поездки перевод не
+                учитывается.
               </p>
             </details>
             <details class="reveal">

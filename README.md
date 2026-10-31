@@ -35,7 +35,7 @@
   <tr>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png"><img src="docs/screenshots/overview-light.png" width="220" alt="Обзор поездки"></picture><br><sub>Обзор: баланс, касса, динамика трат</sub></td>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/expenses-dark.png"><img src="docs/screenshots/expenses-light.png" width="220" alt="Список расходов"></picture><br><sub>Расходы по дням</sub></td>
-    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/new-expense-dark.png"><img src="docs/screenshots/new-expense-light.png" width="220" alt="Новый расход"></picture><br><sub>Новый расход: три способа деления</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/new-expense-dark.png"><img src="docs/screenshots/new-expense-light.png" width="220" alt="Новый расход"></picture><br><sub>Новый расход: четыре способа деления</sub></td>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/balances-dark.png"><img src="docs/screenshots/balances-light.png" width="220" alt="Взаиморасчёты"></picture><br><sub>Кто кому сколько платит</sub></td>
   </tr>
   <tr>
@@ -44,6 +44,12 @@
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/history-dark.png"><img src="docs/screenshots/history-light.png" width="220" alt="История операций"></picture><br><sub>История операций</sub></td>
     <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png"><img src="docs/screenshots/settings-light.png" width="220" alt="Настройки"></picture><br><sub>Настройки поездки</sub></td>
   </tr>
+  <tr>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/claim-dark.png"><img src="docs/screenshots/claim-light.png" width="220" alt="Моя часть счёта"></picture><br><sub>Ресторан: каждый вносит свою часть</sub></td>
+    <td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/stats-dark.png"><img src="docs/screenshots/stats-light.png" width="220" alt="Сколько потрачено на каждого"></picture><br><sub>Сколько потрачено на каждого</sub></td>
+    <td></td>
+    <td></td>
+  </tr>
 </table>
 
 Приложение подхватывает цвета темы Telegram — светлой и тёмной. Скриншоты сняты на демо-данных
@@ -51,11 +57,18 @@
 
 ## Возможности
 
-- **Расходы** — поровну, по долям (весам) или точными суммами; чаевые делятся поровну между
-  участниками расхода; расход можно оплатить из судовой кассы.
+- **Расходы** — поровну, по долям (весам), точными суммами или «каждый сам»; чаевые делятся
+  поровну между участниками расхода; расход можно оплатить из судовой кассы.
+- **Ресторан «каждый за себя»** — плательщик вводит сумму чека, остальные сами вписывают свою
+  часть (можно по позициям) по кнопке «Внести свою часть» из карточки в чате; нераспределённый
+  остаток и чаевые делятся поровну. Карточка обновляется после каждого ввода, счёт можно
+  закрыть. Для категории «Ресторан» этот способ выбирается по умолчанию.
 - **Судовая касса** — взносы, выплаты, корректировки, баланс и расходы, оплаченные из кассы.
 - **Взаиморасчёты** — балансы участников и короткий список переводов «кто кому платит»;
-  погашения отмечаются в один тап.
+  возврат долга отмечается в один тап, а займы и возвраты наличными записываются как переводы
+  денег (в траты поездки они не входят).
+- **Сколько потрачено на каждого** — круговая диаграмма (семья — одним сегментом) и разбивка
+  трат участника по категориям рядом с тем, сколько участник оплатил за всех.
 - **Участники** — из Telegram (автоматически по переписке в чате), по `@username` или гости
   без аккаунта. Деактивация сохраняет историю.
 - **Семейные связи** — расходы участника покрывает другой (например, родитель за ребёнка).
@@ -301,8 +314,10 @@ CharterSplit/
 - **Поровну**: остаток от деления достаётся первым участникам по одной копейке.
 - **По долям**: метод наибольшего остатка — сумма долей всегда сходится до копейки.
 - **Чаевые** хранятся отдельно от долей и делятся поровну между участниками расхода.
-- **Баланс** участника = заплатил − его доли ± погашения. Семейные связи переносят чистый
-  эффект участника на покрывающего прямо при расчёте.
+- **«Каждый сам»**: доля = своя часть + равная доля нераспределённого остатка чека.
+- **Баланс** участника = оплачено − его доли − получено переводами + отдано переводами.
+  Семейные связи переносят чистый эффект участника на того, кто оплачивает его расходы,
+  прямо при расчёте.
 - **Переводы** строятся жадно: крупнейший должник платит крупнейшему кредитору — не больше
   n−1 перевода на n участников.
 - **Касса** = взносы − выплаты ± корректировки − расходы, оплаченные из кассы.
@@ -315,7 +330,7 @@ CharterSplit/
   только после проверки через Bot API, что он состоит в этом чате.
 - Вебхук защищён секретом в пути и заголовке; секрет, `initData` и cookie вырезаются из логов.
 - Внутри поездки участники равноправны: любой может добавлять и править расходы, кассу и
-  погашения. Название, валюту, настройки и активность участников меняет только владелец.
+  переводы денег. Название, валюту, настройки и активность участников меняет только владелец.
 
 Нашли уязвимость — см. [SECURITY.md](SECURITY.md).
 
