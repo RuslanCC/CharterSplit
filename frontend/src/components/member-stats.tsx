@@ -15,9 +15,12 @@ const NO_CATEGORY = 'Без категории';
 export function MemberStatsCard({
   stats,
   currency,
+  coveredBy,
 }: {
   stats: MemberStats[];
   currency: string;
+  /** memberId → имя того, кто платит за участника (семейная связь). */
+  coveredBy: Record<string, string>;
 }) {
   const [open, setOpen] = useState<string | null>(null);
 
@@ -39,7 +42,9 @@ export function MemberStatsCard({
                     {m.displayName}
                   </div>
                   <div className="text-xs text-hint">
-                    оплатил {formatMoney(m.paid, currency)}
+                    заплатил за всех {formatMoney(m.paid, currency)}
+                    {coveredBy[m.memberId] &&
+                      ` · за него платит ${coveredBy[m.memberId]}`}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">

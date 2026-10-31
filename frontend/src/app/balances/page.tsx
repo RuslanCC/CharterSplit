@@ -133,7 +133,7 @@ export default function BalancesPage() {
               <div className="text-xs text-hint">Мой баланс</div>
               {myCovererName ? (
                 <div className="mt-1 text-lg font-semibold">
-                  покрывает {myCovererName}
+                  за вас платит {myCovererName}
                 </div>
               ) : (
                 <div
@@ -150,8 +150,13 @@ export default function BalancesPage() {
                   {formatMoney(my.balance, trip.currency)}
                 </div>
               )}
-              <div className="mt-1 text-xs text-hint">
-                внёс {formatMoney(my.paid, trip.currency)} · доля{' '}
+              {!myCovererName && my.balance !== 0 && (
+                <div className="text-sm text-hint">
+                  {my.balance > 0 ? 'вам должны вернуть' : 'вы должны'}
+                </div>
+              )}
+              <div className="mt-2 text-xs text-hint">
+                вы заплатили {formatMoney(my.paid, trip.currency)} · на вас потрачено{' '}
                 {formatMoney(my.owed, trip.currency)}
               </div>
             </Card>
@@ -301,18 +306,33 @@ export default function BalancesPage() {
                 ? data.members.find((x) => x.memberId === m.effectiveMemberId)
                     ?.displayName
                 : undefined;
+              // Те, за кого платит этот участник: их траты входят в его баланс.
+              const dependents = data.members.filter(
+                (x) => x.effectiveMemberId === m.memberId && x.memberId !== m.memberId,
+              );
               return (
-                <CardRow key={m.memberId}>
-                  <div>
+                <CardRow key={m.memberId} className="gap-3">
+                  <div className="min-w-0">
                     <div className="font-medium">{m.displayName}</div>
                     <div className="text-xs text-hint">
-                      внёс {formatMoney(m.paid, trip.currency)} · доля{' '}
+                      заплатил {formatMoney(m.paid, trip.currency)} · на него{' '}
                       {formatMoney(m.owed, trip.currency)}
                     </div>
+                    {dependents.length > 0 && (
+                      <div className="text-xs text-hint">
+                        + на {dependents.map((d) => d.displayName).join(', ')}{' '}
+                        {formatMoney(
+                          dependents.reduce((sum, d) => sum + d.owed, 0),
+                          trip.currency,
+                        )}
+                      </div>
+                    )}
                   </div>
                   {covered ? (
-                    <span className="text-xs text-hint">
-                      покрывает {covererName ?? '?'}
+                    <span className="shrink-0 text-right text-xs text-hint">
+                      за него платит
+                      <br />
+                      {covererName ?? '?'}
                     </span>
                   ) : (
                     <span
@@ -333,13 +353,28 @@ export default function BalancesPage() {
               );
             })}
           </Card>
+          <div className="mt-1.5 px-1 text-xs leading-relaxed text-hint">
+            «Заплатил» — сколько участник оплатил чеков за всех. «На него» — сколько
+            потрачено на него самого: его доли во всех расходах. Баланс = заплатил − на
+            него (и тех, за кого он платит) ± погашения. Плюс — ему должны вернуть, минус
+            — он должен.
+          </div>
 
           {summary.data && summary.data.memberStats.length > 0 && (
             <>
-              <SectionTitle>Траты участников</SectionTitle>
+              <SectionTitle>Сколько потрачено на каждого</SectionTitle>
               <MemberStatsCard
                 stats={summary.data.memberStats}
                 currency={trip.currency}
+                coveredBy={Object.fromEntries(
+                  data.members
+                    .filter((x) => x.effectiveMemberId !== x.memberId)
+                    .map((x) => [
+                      x.memberId,
+                      data.members.find((y) => y.memberId === x.effectiveMemberId)
+                        ?.displayName ?? '?',
+                    ]),
+                )}
               />
               {summary.data.spentFromFund > 0 && (
                 <div className="mt-1.5 px-1 text-xs text-hint">
@@ -347,6 +382,10 @@ export default function BalancesPage() {
                   {formatMoney(summary.data.spentFromFund, trip.currency)}
                 </div>
               )}
+              <div className="mt-1.5 px-1 text-xs leading-relaxed text-hint">
+                Крупная сумма — доли участника во всех расходах (с чаевыми), по
+                категориям. Погашения долгов сюда не входят.
+              </div>
             </>
           )}
 

@@ -59,7 +59,11 @@ export default function OverviewPage() {
               {myBalance === undefined ? '—' : formatMoney(myBalance, trip.currency)}
             </div>
             <div className="mt-0.5 text-xs text-hint">
-              {(myBalance ?? 0) < 0 ? 'вы должны' : 'вам должны'}
+              {myBalance === undefined || myBalance === 0
+                ? 'все рассчитаны'
+                : myBalance < 0
+                  ? 'вы должны'
+                  : 'вам должны вернуть'}
             </div>
           </Card>
           <Card className="p-4">
