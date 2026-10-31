@@ -121,6 +121,32 @@ export default function BalancesPage() {
       ? data?.members.find((b) => b.memberId === my.effectiveMemberId)?.displayName
       : undefined;
 
+  // Погашения по участнику — как в балансе: на конечного покрывающего.
+  const effectiveOf = (memberId: string) =>
+    data?.members.find((b) => b.memberId === memberId)?.effectiveMemberId ?? memberId;
+  const settled = (memberId: string) => {
+    let received = 0;
+    let given = 0;
+    for (const s of data?.settlements ?? []) {
+      if (effectiveOf(s.toMemberId) === memberId) received += s.amount;
+      if (effectiveOf(s.fromMemberId) === memberId) given += s.amount;
+    }
+    return { received, given };
+  };
+  const hasSettled = (memberId: string) => {
+    const { received, given } = settled(memberId);
+    return received + given > 0;
+  };
+  const settledText = (memberId: string, received: string, given: string) => {
+    const { received: r, given: g } = settled(memberId);
+    return [
+      r > 0 && `${received} ${formatMoney(r, trip.currency)}`,
+      g > 0 && `${given} ${formatMoney(g, trip.currency)}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  };
+
   return (
     <div>
       <PageHeader title="Взаиморасчёты" />
@@ -159,6 +185,11 @@ export default function BalancesPage() {
                 вы заплатили {formatMoney(my.paid, trip.currency)} · на вас потрачено{' '}
                 {formatMoney(my.owed, trip.currency)}
               </div>
+              {!myCovererName && hasSettled(my.memberId) && (
+                <div className="text-xs text-hint">
+                  погашения: {settledText(my.memberId, 'вам вернули', 'вы отдали')}
+                </div>
+              )}
             </Card>
           )}
 
@@ -327,6 +358,11 @@ export default function BalancesPage() {
                         )}
                       </div>
                     )}
+                    {!covered && hasSettled(m.memberId) && (
+                      <div className="text-xs text-hint">
+                        погашения: {settledText(m.memberId, 'ему вернули', 'он отдал')}
+                      </div>
+                    )}
                   </div>
                   {covered ? (
                     <span className="shrink-0 text-right text-xs text-hint">
@@ -355,8 +391,9 @@ export default function BalancesPage() {
           </Card>
           <div className="mt-1.5 px-1 text-xs leading-relaxed text-hint">
             «Заплатил» — сколько участник оплатил чеков за всех. «На него» — сколько
-            потрачено на него самого: его доли во всех расходах. Баланс = заплатил − на
-            него (и тех, за кого он платит) ± погашения. Плюс — ему должны вернуть, минус
+            потрачено на него самого: его доли во всех расходах. «Погашения» — долги,
+            которые уже вернули или отдали деньгами. Баланс = заплатил − на него (и тех,
+            за кого он платит) − ему вернули + он отдал. Плюс — ему должны вернуть, минус
             — он должен.
           </div>
 
