@@ -159,7 +159,10 @@ export class NotifyService {
     if (expense.tipAmount > 0) {
       lines.push(`<i>вкл. чаевые ${fmt(expense.tipAmount)} поровну</i>`);
     }
-    lines.push('', `<i>Кто добавил: ${escapeHtml(await this.actorName(tripId, actor))}</i>`);
+    lines.push(
+      '',
+      `<i>Кто добавил: ${escapeHtml(await this.actorName(tripId, actor))}</i>`,
+    );
     return { text: lines.join('\n') };
   }
 
