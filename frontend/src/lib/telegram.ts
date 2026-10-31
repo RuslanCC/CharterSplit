@@ -121,4 +121,6 @@ export function applyTelegramTheme(): void {
   for (const [key, value] of map) {
     if (value) root.setProperty(key, value);
   }
+  // Тёмная тема для токенов, которых нет в themeParams (палитра диаграмм).
+  document.documentElement.dataset.theme = wa.colorScheme === 'dark' ? 'dark' : 'light';
 }

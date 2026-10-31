@@ -42,9 +42,9 @@ export function MemberStatsCard({
                     {m.displayName}
                   </div>
                   <div className="text-xs text-hint">
-                    заплатил за всех {formatMoney(m.paid, currency)}
+                    оплачено за всех {formatMoney(m.paid, currency)}
                     {coveredBy[m.memberId] &&
-                      ` · за него платит ${coveredBy[m.memberId]}`}
+                      ` · расходы оплачивает ${coveredBy[m.memberId]}`}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">

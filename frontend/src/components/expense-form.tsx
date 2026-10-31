@@ -396,7 +396,7 @@ export function ExpenseForm({
                         setClaimedIn((c) => ({ ...c, [m.id]: e.target.value }))
                       }
                       inputMode="decimal"
-                      placeholder="внесёт сам"
+                      placeholder="впишет позже"
                       aria-label={`Часть: ${m.displayName}`}
                       className="w-28 rounded-lg border border-line bg-bg px-2 py-1 text-right text-sm"
                     />
@@ -455,7 +455,7 @@ export function ExpenseForm({
                 {unclaimed < 0
                   ? `Части больше чека на ${formatMoney(-unclaimed, trip.currency)}`
                   : `Не распределено: ${formatMoney(unclaimed, trip.currency)} — поделится поровну.`}{' '}
-                Каждый впишет свою часть сам — кнопкой в чате или в списке расходов.
+                Каждый участник впишет свою часть — кнопкой в чате или в списке расходов.
               </div>
             )}
           </div>

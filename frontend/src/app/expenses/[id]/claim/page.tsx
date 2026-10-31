@@ -180,7 +180,7 @@ function ClaimForm({
           Чек {formatMoney(expense.amount, cur)}
           {expense.tipAmount > 0 &&
             ` (вкл. чаевые ${formatMoney(expense.tipAmount, cur)})`}
-          {' · '}платил {expense.paidByMember?.displayName}
+          {' · '}оплата: {expense.paidByMember?.displayName}
         </div>
         <div className="mt-3 flex items-baseline justify-between text-sm">
           <span>
@@ -316,8 +316,8 @@ function ClaimForm({
                 <div className="truncate font-medium">{name}</div>
                 <div className="text-xs text-hint">
                   {s.claimed === null
-                    ? 'ещё не внёс'
-                    : `внёс ${formatMoney(s.claimed, cur)}`}
+                    ? 'ещё не внесено'
+                    : `внесено ${formatMoney(s.claimed, cur)}`}
                 </div>
               </div>
               <span className={cn('font-semibold', s.claimed === null && 'text-hint')}>

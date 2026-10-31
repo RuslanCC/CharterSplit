@@ -125,8 +125,8 @@ export class NotifyService {
     ];
 
     if (expense.fromFund) {
-      lines.push(`Оплатил ${payerName} · оплачено из кассы`);
-      lines.push(`Добавил ${escapeHtml(await this.actorName(tripId, actor))}`);
+      lines.push(`Оплата: ${payerName} · из кассы`);
+      lines.push(`Кто добавил: ${escapeHtml(await this.actorName(tripId, actor))}`);
       return { text: lines.join('\n') };
     }
 
@@ -138,7 +138,7 @@ export class NotifyService {
       expense.splitType === 'EQUAL'
         ? `делится поровну на ${expense.shares.length}`
         : `делится ${SPLIT_NOTE[expense.splitType]}`;
-    lines.push(`Оплатил ${payerName} · ${how}`);
+    lines.push(`Оплата: ${payerName} · ${how}`);
 
     // Итоговый долг каждого = его доля + равная доля чаевых.
     const tipShares = computeTipShares(
@@ -159,7 +159,7 @@ export class NotifyService {
     if (expense.tipAmount > 0) {
       lines.push(`<i>вкл. чаевые ${fmt(expense.tipAmount)} поровну</i>`);
     }
-    lines.push('', `<i>Добавил ${escapeHtml(await this.actorName(tripId, actor))}</i>`);
+    lines.push('', `<i>Кто добавил: ${escapeHtml(await this.actorName(tripId, actor))}</i>`);
     return { text: lines.join('\n') };
   }
 
@@ -187,7 +187,7 @@ export class NotifyService {
     const open = expense.closedAt === null;
     const claimedCount = expense.shares.filter((s) => s.claimed !== null).length;
     lines.push(
-      `Оплатил ${payerName} · ${SPLIT_NOTE.SELF}` +
+      `Оплата: ${payerName} · ${SPLIT_NOTE.SELF}` +
         (open ? ` (внесли ${claimedCount} из ${expense.shares.length})` : ''),
     );
 
@@ -205,7 +205,7 @@ export class NotifyService {
 
     lines.push('', '<b>Кто сколько должен:</b>');
     for (const r of rows) {
-      const mark = r.claimed === null ? (open ? ' · ещё не внёс' : '') : ' ✓';
+      const mark = r.claimed === null ? (open ? ' · ещё не внесено' : '') : ' ✓';
       lines.push(`• ${escapeHtml(r.name)} — ${fmt(r.owed)}${mark}`);
     }
 

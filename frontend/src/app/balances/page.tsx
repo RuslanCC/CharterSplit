@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Select, Label } from '@/components/ui/input';
 import { PageHeader, Loading, ErrorState, EmptyState } from '@/components/page';
 import { MemberStatsCard } from '@/components/member-stats';
+import { MemberPie, type PieGroup } from '@/components/member-pie';
 
 export default function BalancesPage() {
   const { trip, userId } = useTrip();
@@ -63,7 +64,7 @@ export default function BalancesPage() {
 
   async function removeSettlement(id: string) {
     if (busy) return;
-    if (!(await confirmDialog('Удалить погашение? Долг вернётся в расчёты.'))) return;
+    if (!(await confirmDialog('Удалить перевод? Сумма вернётся в расчёты.'))) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -82,11 +83,11 @@ export default function BalancesPage() {
     setFormError(null);
     const amount = parseMoney(amountInput);
     if (!fromMemberId || !toMemberId) {
-      setFormError('Выберите должника и получателя');
+      setFormError('Выберите, кто отдал и кто получил деньги');
       return;
     }
     if (fromMemberId === toMemberId) {
-      setFormError('Должник и получатель совпадают');
+      setFormError('Отдал и получил один и тот же участник');
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -147,6 +148,25 @@ export default function BalancesPage() {
       .join(' · ');
   };
 
+  // Диаграмма: траты участника вместе с теми, чьи расходы он оплачивает.
+  // Цвет закреплён за участником (порядок вступления), а не за местом в рейтинге.
+  const pieGroups: PieGroup[] = [];
+  if (data && summary.data) {
+    const consumed = new Map(
+      summary.data.memberStats.map((s) => [s.memberId, s.consumed]),
+    );
+    const leads = trip.members.filter((m) => effectiveOf(m.id) === m.id);
+    leads.forEach((lead, slot) => {
+      const family = trip.members.filter((m) => effectiveOf(m.id) === lead.id);
+      pieGroups.push({
+        key: lead.id,
+        label: family.map((m) => m.displayName).join(' + '),
+        amount: family.reduce((sum, m) => sum + (consumed.get(m.id) ?? 0), 0),
+        slot,
+      });
+    });
+  }
+
   return (
     <div>
       <PageHeader title="Взаиморасчёты" />
@@ -159,7 +179,7 @@ export default function BalancesPage() {
               <div className="text-xs text-hint">Мой баланс</div>
               {myCovererName ? (
                 <div className="mt-1 text-lg font-semibold">
-                  за вас платит {myCovererName}
+                  ваши расходы оплачивает {myCovererName}
                 </div>
               ) : (
                 <div
@@ -182,12 +202,12 @@ export default function BalancesPage() {
                 </div>
               )}
               <div className="mt-2 text-xs text-hint">
-                вы заплатили {formatMoney(my.paid, trip.currency)} · на вас потрачено{' '}
+                вы оплатили {formatMoney(my.paid, trip.currency)} · ваши траты{' '}
                 {formatMoney(my.owed, trip.currency)}
               </div>
               {!myCovererName && hasSettled(my.memberId) && (
                 <div className="text-xs text-hint">
-                  погашения: {settledText(my.memberId, 'вам вернули', 'вы отдали')}
+                  переводы: {settledText(my.memberId, 'вы получили', 'вы отдали')}
                 </div>
               )}
             </Card>
@@ -229,10 +249,13 @@ export default function BalancesPage() {
           <div className="mt-3">
             {formOpen ? (
               <Card className="p-4">
-                <div className="mb-3 text-sm font-medium">Записать погашение</div>
+                <div className="text-sm font-medium">Записать перевод денег</div>
+                <div className="mt-0.5 mb-3 text-xs text-hint">
+                  Вернули долг или дали денег в долг — запишите, кто кому передал деньги.
+                </div>
                 <div className="space-y-3">
                   <div>
-                    <Label>Кто заплатил (должник)</Label>
+                    <Label>Кто отдал деньги</Label>
                     <Select
                       value={fromMemberId}
                       onChange={(e) => setFromMemberId(e.target.value)}
@@ -246,7 +269,7 @@ export default function BalancesPage() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Кто получил</Label>
+                    <Label>Кто получил деньги</Label>
                     <Select
                       value={toMemberId}
                       onChange={(e) => setToMemberId(e.target.value)}
@@ -289,14 +312,14 @@ export default function BalancesPage() {
               </Card>
             ) : (
               <Button variant="secondary" block onClick={() => setFormOpen(true)}>
-                Записать погашение
+                Записать перевод денег (долг или возврат)
               </Button>
             )}
           </div>
 
           {data.settlements.length > 0 && (
             <>
-              <SectionTitle>Погашения</SectionTitle>
+              <SectionTitle>Переводы денег</SectionTitle>
               <Card>
                 {data.settlements.map((s) => (
                   <CardRow key={s.id}>
@@ -346,12 +369,12 @@ export default function BalancesPage() {
                   <div className="min-w-0">
                     <div className="font-medium">{m.displayName}</div>
                     <div className="text-xs text-hint">
-                      заплатил {formatMoney(m.paid, trip.currency)} · на него{' '}
+                      оплачено {formatMoney(m.paid, trip.currency)} · траты{' '}
                       {formatMoney(m.owed, trip.currency)}
                     </div>
                     {dependents.length > 0 && (
                       <div className="text-xs text-hint">
-                        + на {dependents.map((d) => d.displayName).join(', ')}{' '}
+                        + траты {dependents.map((d) => d.displayName).join(', ')}:{' '}
                         {formatMoney(
                           dependents.reduce((sum, d) => sum + d.owed, 0),
                           trip.currency,
@@ -360,13 +383,13 @@ export default function BalancesPage() {
                     )}
                     {!covered && hasSettled(m.memberId) && (
                       <div className="text-xs text-hint">
-                        погашения: {settledText(m.memberId, 'ему вернули', 'он отдал')}
+                        переводы: {settledText(m.memberId, 'получено', 'отдано')}
                       </div>
                     )}
                   </div>
                   {covered ? (
                     <span className="shrink-0 text-right text-xs text-hint">
-                      за него платит
+                      расходы оплачивает
                       <br />
                       {covererName ?? '?'}
                     </span>
@@ -390,16 +413,18 @@ export default function BalancesPage() {
             })}
           </Card>
           <div className="mt-1.5 px-1 text-xs leading-relaxed text-hint">
-            «Заплатил» — сколько участник оплатил чеков за всех. «На него» — сколько
-            потрачено на него самого: его доли во всех расходах. «Погашения» — долги,
-            которые уже вернули или отдали деньгами. Баланс = заплатил − на него (и тех,
-            за кого он платит) − ему вернули + он отдал. Плюс — ему должны вернуть, минус
-            — он должен.
+            «Оплачено» — сколько участник оплатил чеков за всех. «Траты» — доли участника
+            во всех расходах. «Переводы» — деньги, переданные напрямую: возврат долга или
+            заём. Баланс = оплачено − траты (свои и тех, чьи расходы участник оплачивает)
+            − получено + отдано. Плюс — участнику должны вернуть, минус — участник должен.
           </div>
 
           {summary.data && summary.data.memberStats.length > 0 && (
             <>
               <SectionTitle>Сколько потрачено на каждого</SectionTitle>
+              <Card className="mb-3">
+                <MemberPie groups={pieGroups} currency={trip.currency} />
+              </Card>
               <MemberStatsCard
                 stats={summary.data.memberStats}
                 currency={trip.currency}
@@ -421,7 +446,7 @@ export default function BalancesPage() {
               )}
               <div className="mt-1.5 px-1 text-xs leading-relaxed text-hint">
                 Крупная сумма — доли участника во всех расходах (с чаевыми), по
-                категориям. Погашения долгов сюда не входят.
+                категориям. Переводы денег сюда не входят.
               </div>
             </>
           )}

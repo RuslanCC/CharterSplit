@@ -33,6 +33,32 @@
   --radius-xl: 14px;
 }
 
+/* Категориальная палитра диаграмм (фиксированный порядок, проверена на
+   различимость при дальтонизме). Тёмная тема — те же оттенки, подобранные под
+   тёмный фон; data-theme ставит applyTelegramTheme по colorScheme Telegram. */
+:root {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+  --series-other: #94a3b8;
+}
+:root[data-theme='dark'] {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --series-other: #64748b;
+}
+
 html,
 body {
   background: var(--tg-secondary-bg);
