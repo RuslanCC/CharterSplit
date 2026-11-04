@@ -11,6 +11,7 @@ import { formatMoney, formatDayLabel, formatTime, SPLIT_LABELS } from '@/lib/for
 import type { Expense } from '@/lib/types';
 import { Card, CardRow, SectionTitle } from '@/components/ui/card';
 import { CategoryBadge } from '@/components/category-badge';
+import { CategoryPie } from '@/components/category-pie';
 import { PageHeader, Loading, ErrorState, EmptyState } from '@/components/page';
 
 export default function ExpensesPage() {
@@ -139,6 +140,14 @@ export default function ExpensesPage() {
             </Card>
           </div>
         ))}
+        {data && data.length > 0 && (
+          <>
+            <SectionTitle>По категориям</SectionTitle>
+            <Card>
+              <CategoryPie expenses={data} currency={trip.currency} />
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );
